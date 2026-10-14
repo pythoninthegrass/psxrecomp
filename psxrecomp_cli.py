@@ -877,25 +877,46 @@ def regen_bios_profile(
 
 
 def write_bios_emitter_stamp(
-    fw: Path, profile_rel: str, *, progress: ProgressReporter
+    fw: Path,
+    profile_rel: str,
+    *,
+    progress: ProgressReporter,
 ) -> None:
-    """Record generated/<stem>.emitter.sha like tools/regen_bios.sh, so the next
-    configure does not report the fresh BIOS as STALE."""
-    recompiler = load_sections(fw / profile_rel).get("recompiler", {})
-    stem = recompiler.get("out_stem")
-    cmake = shutil.which("cmake")
-    if not stem or not cmake:
-        progress.log(f"emitter stamp skipped for {profile_rel} (no out_stem or cmake)")
-        return
+    """Write generated/<stem>.emitter.sha so runtime.cmake's staleness check
+    (runtime/runtime.cmake) sees this regen, matching tools/regen_bios.sh's
+    stamp. Without it, PSXRECOMP_BIOS_STALE_FATAL configures (release CI) fail
+    on a BIOS this CLI just generated cleanly.
+    """
+    sections = load_sections(fw / profile_rel)
+    recompiler = sections.get("recompiler", {})
+    out_dir = str(recompiler.get("out_dir") or "generated")
+    out_stem = recompiler.get("out_stem")
+    if not out_stem:
+        raise RuntimeError(f"no [recompiler].out_stem in {profile_rel}")
+    cmake = _which_tool("cmake")
+    if cmake is None:
+        raise RuntimeError("cmake not found on PATH (needed for BIOS emitter fingerprint)")
+    fp_script = fw / "tools" / "bios_emitter_fingerprint.cmake"
     proc = subprocess.run(
-        [cmake, f"-DROOT={fw}", f"-DPROFILE={profile_rel}",
-         "-P", str(fw / "tools" / "bios_emitter_fingerprint.cmake")],
-        cwd=str(fw), capture_output=True, text=True,
+        [
+            str(cmake),
+            f"-DROOT={fw}",
+            f"-DPROFILE={profile_rel}",
+            "-P", str(fp_script),
+        ],
+        cwd=str(fw),
+        capture_output=True,
+        text=True, encoding="utf-8", errors="replace",
     )
-    if proc.returncode != 0:
-        raise RuntimeError(f"emitter fingerprint failed for {profile_rel}: {proc.stderr.strip()}")
-    out_dir = fw / str(recompiler.get("out_dir") or "generated")
-    (out_dir / f"{stem}.emitter.sha").write_text(proc.stdout, encoding="utf-8")
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise RuntimeError(
+            f"bios_emitter_fingerprint failed for {profile_rel} "
+            f"(exit {proc.returncode}): {proc.stderr.strip()}"
+        )
+    stamp = (fw / out_dir / f"{out_stem}.emitter.sha")
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    stamp.write_text(proc.stdout.strip() + "\n", encoding="utf-8")
+    progress.log(f"wrote BIOS emitter fingerprint {stamp.relative_to(fw)}")
 
 
 def load_sections(config: Path) -> dict[str, dict[str, Any]]:
@@ -2488,7 +2509,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument(
         "--force-bios",
         action="store_true",
-        help="regenerate OpenBIOS even if generated/ backends already exist",
+        help="regenerate both the retail BIOS and OpenBIOS backends even if "
+        "generated/ backends already exist",
     )
     g.add_argument("--skip-hash-check", action="store_true")
     g.add_argument("--force-prepare", action="store_true")
