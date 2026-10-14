@@ -2585,8 +2585,7 @@ static void process_pending(uint32_t cycles) {
 
     case 0x15: /* SeekL complete */
     case 0x16: /* SeekP complete */
-        stat_reg &= ~CDSTAT_SEEK;
-        stat_reg |= CDSTAT_READ;   /* PSX-CD-003: GT1 waits for READ after seek */
+        stat_reg &= ~(CDSTAT_SEEK | CDSTAT_READ);
         setloc_seek_far = 0;
     setloc_pending = 0;
         response_push(stat_reg);
