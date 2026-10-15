@@ -46,3 +46,24 @@ Both ports show the same two values, repeating three passes at a time, shifted a
 ## Second example: a region the branch can leave
 
 `func_8006388C` A=`0x8006388C`, B=`0x800638A0` (the fall-through block after its `beq`). The taken branch leaves the region, so most attempts are abandoned. Measured from power-on, 16 completed passes each: native 32,956 and Beetle 43,924 passes abandoned by A re-entry, completed passes cost 22 cycles on both ports except native pass 4 (1,556 cycles) and Beetle pass 15 (15 cycles). The cause of those two outliers was not determined. A `max_cycles` bound below 1,556 would abandon native pass 4 (not run).
+
+## Region sweep, Azure Dreams (native vs stock Beetle)
+
+Regions A=function entry, B=its next block leader, `max_cycles` 5000, 32 passes requested per port, armed over TCP with both ports in the same title/intro loop. Cycles per completed pass, with how many passes of each value:
+
+| A -> B | native | Beetle |
+|---|---|---|
+| 80063828 -> 80063858 | 57 x32 | 57 x32 |
+| 8006388C -> 800638A0 | 22 x32 | 22 x31, 15 x1 |
+| 800566C4 -> 800566D8 | 16 x30, 24 x2 | 16 x30, 24 x2 |
+| 80068544 -> 80068558 | 12 x32 | 12 x32 |
+| 80056664 -> 80056694 | 19 x30, 42 x2 | 19 x30, 42 x2 |
+| 8006A564 -> 8006A59C | 60 x32 | 60 x32 |
+| 80068228 -> 80068244 | 27 x32 | 27 x32 |
+| 800679A8 -> 800679C8 | 33 x32 | 33 x32 |
+| 800613D0 -> 8006141C | 50 x14, 68 x8, 82 x10 | 82 x13, 50 x4 (17 passes) |
+| 80061B74 -> 80061B80 | 3 x32 | 3 x17 (17 passes) |
+| 80069878 -> 80069884 | 2 x32 | 9 x23, 2 x9 |
+| 80069158 -> 80069168 | 4 x30, 11 x2 | 11 x18, 1 x14 |
+
+Every value set that both ports produced is identical where the passes took the same arms. The last two rows differ in which arms each port took in its window (native has no 9, Beetle has no 4; which arm each value belongs to was not determined), so they are inconclusive, not gaps. Not exercised in-game: mult/div and GTE regions (the hot candidates, `800477F4`, `8004C010`, `8004C730`, `80068B84`, had no hits in the window or no second block leader); those components are covered only by the cycle test ROM log in FAITHFUL_TIMING_PLAN.md and were not re-measured here. No region with a native-vs-Beetle cycle gap was found.
