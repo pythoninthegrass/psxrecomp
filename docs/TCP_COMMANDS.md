@@ -309,6 +309,10 @@ Run an A/A pair first to show that the run is deterministic. The tool's
 docstring (`--help`) lists every option. The self-test is
 `tools/tests/test_fp_identity.py` (ctest `fp_identity`).
 
+## `devtrace_dump` — device-event ring (native and Beetle)
+
+The ring holds 1M events (`DEVTRACE_RING_CAP`); `seq` is monotonic since boot. A response is cut off when its 12 MB buffer fills, about 157,700 events, and the NEWEST events are the ones dropped; only `emitted` < `count` hints at it. Page with `cyc_lo` and merge by `seq`, and take an anchor and its targets from one snapshot, never from two separate pulls. `tools/devtrace_anchor.py` does this and is documented in `tools/DEVTRACE_ANCHOR.md`.
+
 ## `bios_info` — linked recompiled-BIOS identity (native only)
 
 Reports which BIOS image this build's recompiled C was generated from
