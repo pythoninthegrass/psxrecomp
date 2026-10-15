@@ -54,5 +54,29 @@ int main(void)
     assert(cyc_watch_region_step(&r, A, 100, &d) == 0);
     assert(cyc_watch_region_step(&r, A, 5000, &d) == 0);
     assert(r.abandoned_overrun == 1 && r.abandoned_reentry == 0 && r.in_region == 1);
+
+    /* per-pass deltas recorded from native on func_8006388C (A=0x8006388C, B=0x800638A0): pass 4 cost 1556 */
+    {
+        static const uint64_t recorded[16] = {22, 22, 22, 22, 1556, 22, 22, 22,
+                                              22, 22, 22, 22, 22, 22, 22, 22};
+        for (int bound = 0; bound <= 500; bound += 500) {
+            uint64_t t = 1000, got[16];
+            int n = 0;
+            cyc_watch_region_init(&r, 0x0006388Cu, 0x000638A0u, (uint64_t)bound);
+            for (int i = 0; i < 16; i++) {
+                assert(cyc_watch_region_step(&r, 0x0006388Cu, t, &d) == 0);
+                t += recorded[i];
+                if (cyc_watch_region_step(&r, 0x000638A0u, t, &d)) got[n++] = d;
+                t += 40;
+            }
+            if (bound == 0) {
+                assert(n == 16 && got[4] == 1556 && r.abandoned_overrun == 0);
+            } else {
+                /* the bound is checked at the next observation, so B itself is the late hit */
+                assert(n == 15 && r.abandoned_overrun == 1);
+                for (int i = 0; i < n; i++) assert(got[i] == 22);
+            }
+        }
+    }
     return 0;
 }
