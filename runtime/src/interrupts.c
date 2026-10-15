@@ -184,9 +184,10 @@ void psx_irq_set_cause_ptr(uint32_t *p)
  * exact guest cycle. */
 void psx_irq_raise(uint32_t bit, uint32_t detail)
 {
+    uint32_t prev_stat = i_stat;
     i_stat |= (1u << bit);
     psx_irq_refresh_cause_ip2();
-    device_trace_note(bit, detail);
+    device_trace_note_raise(prev_stat, bit, detail);
 }
 
 /* Dispatch counter for vblank scheduling. */
