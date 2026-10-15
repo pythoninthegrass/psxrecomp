@@ -1,0 +1,64 @@
+diff --git a/libretro.cpp b/libretro.cpp
+--- a/libretro.cpp
++++ b/libretro.cpp
+@@ -516,6 +516,12 @@
+ psxrecomp_irq_cb_t     g_psxrecomp_irq_cb     = NULL;
+ psxrecomp_pc_cb_t      g_psxrecomp_pc_cb      = NULL;
+ uint64_t               psxrecomp_guest_cycle_base = 0;
++int32_t                psxrecomp_event_ts         = 0;
++
++extern "C" unsigned long long beetle_core_get_event_cycles(void)
++{
++   return (unsigned long long)(psxrecomp_guest_cycle_base + (uint32_t)psxrecomp_event_ts);
++}
+ 
+ extern "C" unsigned long long beetle_core_get_guest_cycles(void)
+ {
+@@ -737,6 +743,9 @@
+       int32_t nt;
+       event_list_entry *prev = e->prev;
+ 
++      /* PSXRecomp oracle: exact scheduled time of the device event running. */
++      psxrecomp_event_ts = e->event_time;
++
+       switch(e->which)
+       {
+          default:
+diff --git a/mednafen/psx/irq.cpp b/mednafen/psx/irq.cpp
+--- a/mednafen/psx/irq.cpp
++++ b/mednafen/psx/irq.cpp
+@@ -57,6 +57,7 @@
+ void IRQ_Assert(int which, bool status)
+ {
+    uint32_t old_Asserted = Asserted;
++   uint32_t old_Status = Status;
+    //PSX_WARNING("[IRQ] Assert: %d %d", which, status);
+ 
+ /*
+@@ -74,8 +75,9 @@
+       //Status |= 1 << which;
+       Status |= (old_Asserted ^ Asserted) & Asserted;
+ 
+-      /* PSXRecomp oracle hook: rising edge of this IRQ line. */
+-      if(MDFN_UNLIKELY(g_psxrecomp_irq_cb) && ((old_Asserted ^ Asserted) & Asserted))
++      /* PSXRecomp oracle hook: I_STAT rising edge (line rises and the bit was
++       * not already pending), matching the native runtime's edge definition. */
++      if(MDFN_UNLIKELY(g_psxrecomp_irq_cb) && ((old_Asserted ^ Asserted) & Asserted & ~old_Status))
+          g_psxrecomp_irq_cb(which);
+    }
+ 
+diff --git a/mednafen/psx/psx.h b/mednafen/psx/psx.h
+--- a/mednafen/psx/psx.h
++++ b/mednafen/psx/psx.h
+@@ -205,6 +205,11 @@
+  * timestamp. beetle_core_get_guest_cycles() returns the base, i.e. the exact
+  * clock between frames, where the debug server samples it. */
+ extern uint64_t psxrecomp_guest_cycle_base;
++
++/* PSXRecomp oracle: CPU-relative timestamp of the device event being run by
++ * PSX_EventHandler; base + this is the exact guest cycle of IRQs raised from
++ * a device's scheduled Update. */
++extern int32_t psxrecomp_event_ts;
+ extern "C" unsigned long long beetle_core_get_guest_cycles(void);
+ 
+ /* PSXRecomp oracle: per-instruction PC hook (drives the cyc_watch

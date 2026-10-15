@@ -41,16 +41,21 @@ const char* device_source_str(uint32_t source)
     }
 }
 
-void device_trace_note(uint32_t source, uint32_t detail)
+void device_trace_note_at(uint32_t source, uint32_t detail, uint64_t cycle)
 {
     if (!s_armed) return;
     DevEvent* e = &s_ring[s_seq & (DEVTRACE_RING_CAP - 1u)];
     e->seq    = s_seq;
-    e->cycle  = parity_host_cycle();
+    e->cycle  = cycle;
     e->frame  = parity_host_frame();
     e->source = source;
     e->detail = detail;
     s_seq++;
+}
+
+void device_trace_note(uint32_t source, uint32_t detail)
+{
+    device_trace_note_at(source, detail, parity_host_cycle());
 }
 
 void device_trace_note_raise(uint32_t prev_stat, uint32_t source, uint32_t detail)

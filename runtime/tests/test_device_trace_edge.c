@@ -30,6 +30,15 @@ int main(void) {
     device_trace_note_raise(1u << DEV_IRQ_VBLANK, DEV_IRQ_CDROM, 3);
     EXPECT(2, "other pending bits do not suppress a different source");
 
+    device_trace_reset();
+    device_trace_note_at(DEV_IRQ_SIO0, 0, 123456u);
+    device_trace_note_at(DEV_IRQ_SIO0, 0, 123999u);
+    DevEvent rows[2];
+    if (device_trace_get(rows, 2) != 2 || rows[0].cycle != 123456u || rows[1].cycle != 123999u) {
+        fprintf(stderr, "FAIL: device_trace_note_at must stamp the supplied cycle\n");
+        failures++;
+    }
+
     if (failures) {
         fprintf(stderr, "FAILED (%d)\n", failures);
         return 1;
