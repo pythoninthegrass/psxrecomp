@@ -53,6 +53,12 @@ void device_trace_note(uint32_t source, uint32_t detail)
     s_seq++;
 }
 
+void device_trace_note_raise(uint32_t prev_stat, uint32_t source, uint32_t detail)
+{
+    if ((prev_stat >> source) & 1u) return;
+    device_trace_note(source, detail);
+}
+
 uint32_t device_trace_get(DevEvent* out, uint32_t max_rows)
 {
     if (!out || max_rows == 0) return 0;

@@ -1561,6 +1561,10 @@ if(BUILD_TESTING)
     # comments were reduced to a `ctest -R <name>` pointer so there is exactly
     # one description of how a test is built, and it is one the build executes.
 
+    add_executable(device_trace_edge_test tests/test_device_trace_edge.c src/device_trace.c)
+    target_include_directories(device_trace_edge_test PRIVATE include)
+    add_test(NAME device_trace_edge_test COMMAND device_trace_edge_test)
+
     add_executable(cdrom_irq_mask_test tests/test_cdrom_irq_mask.c)
     target_include_directories(cdrom_irq_mask_test PRIVATE src)
     add_test(NAME cdrom_irq_mask_test COMMAND cdrom_irq_mask_test)
