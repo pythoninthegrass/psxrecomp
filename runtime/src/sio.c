@@ -12,6 +12,7 @@
  *   - IRQ delivery via i_stat bit-set (same as timers/dma)
  */
 
+#include "psx_video_timing.h"
 #include "sio.h"
 #include "psx_bss.h"
 #include "memcard.h"
@@ -525,10 +526,10 @@ int sio_card_handoff_cap(void) { return CARD_HANDOFF_CAP; }
 int sio_card_handoff_armed(void) { return s_card_handoff_armed; }
 
 int sio_hold_present_for_card(void) {
-    /* NTSC VBlank period — matches interrupts.c VBLANK_CYCLES. */
+    /* NTSC VBlank period (psx_video_timing.h). */
     enum { SIO_PRESENT_HOLD_STALE_VB = 10 };
     static const uint64_t stale_cycles =
-        564480ull * (uint64_t)SIO_PRESENT_HOLD_STALE_VB;
+        (uint64_t)PSX_VBLANK_CYCLES_NTSC * (uint64_t)SIO_PRESENT_HOLD_STALE_VB;
     static uint32_t s_hold_seq;
     static uint64_t s_hold_progress_cyc;
     static int s_hold_armed;

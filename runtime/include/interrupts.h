@@ -84,8 +84,9 @@ void psx_check_interrupts_dispatch_entry(struct CPUState* cpu, uint32_t resume_p
  * Called from psx_advance_cycles() so the VBlank rate is gated on
  * guest cycles (correct PSX timing) rather than block-dispatch
  * count (which was 5-6x too fast and squeezed game-time to ~60% of
- * real). The period follows the GPU's live video standard: NTSC 564480
- * cycles (33.8688 MHz / 60), PAL 677376 (/ 50); see psx_video_timing.h. */
+ * real). The period follows the GPU's live video standard: NTSC 566122
+ * cycles (33.8688 MHz / 59.826 Hz), PAL 680629 (/ 49.761 Hz); see
+ * psx_video_timing.h. */
 void interrupts_advance_cycles(uint32_t cycles);
 void interrupts_service_scheduled_events(void);
 uint32_t interrupts_cycles_to_vblank(void);

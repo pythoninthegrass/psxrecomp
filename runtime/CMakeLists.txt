@@ -1399,6 +1399,10 @@ if(BUILD_TESTING)
     target_include_directories(cdrom_irq_mask_test PRIVATE src)
     add_test(NAME cdrom_irq_mask_test COMMAND cdrom_irq_mask_test)
 
+    add_executable(video_timing_rate_test tests/test_video_timing_rate.c)
+    target_include_directories(video_timing_rate_test PRIVATE include)
+    add_test(NAME video_timing_rate_test COMMAND video_timing_rate_test)
+
     add_executable(png_write_verified_test tests/test_png_write_verified.c)
     target_include_directories(png_write_verified_test PRIVATE src)
     add_test(NAME png_write_verified_test COMMAND png_write_verified_test

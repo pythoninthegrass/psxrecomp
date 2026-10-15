@@ -15,8 +15,14 @@
  * frame on the period is exactly the new standard's. No extra state is
  * needed across savestates: the GPU snapshot carries the mode bit.
  *
- * The periods keep the framework's round 60/50 Hz constants so NTSC timing
- * is bit-identical to the region-only model this replaces. */
+ * The periods come from the real non-interlaced vertical rates, not round
+ * 60/50 Hz: psx-spx "GPU Timings" gives NTSC 59.826 Hz (53.693175 MHz video
+ * clock, 263 lines) and PAL 49.761 Hz (53.203425 MHz, 314 lines). The CPU
+ * runs from its own 33.8688 MHz crystal, so cycles per frame = CPU Hz / rate.
+ * psx-spx's "3413 clocks per line" is rounded (53.693175 MHz / (3413 * 263) is
+ * 59.817 Hz); 59.826 Hz implies 3412.5, which also agrees with the Beetle
+ * oracle's measured ~16714.85 us per NTSC frame (566,121 cycles). The PAL
+ * period has no oracle measurement behind it here. */
 
 #include <stdint.h>
 
@@ -24,12 +30,17 @@
 extern "C" {
 #endif
 
-#define PSX_VBLANK_CYCLES_NTSC   564480u  /* 33.8688 MHz / 60 Hz */
-#define PSX_VBLANK_CYCLES_PAL    677376u  /* 33.8688 MHz / 50 Hz */
+#define PSX_CPU_HZ               33868800ull
+#define PSX_NTSC_VRATE_MILLIHZ   59826u   /* psx-spx GPU Timings, non-interlaced NTSC */
+#define PSX_PAL_VRATE_MILLIHZ    49761u   /* psx-spx GPU Timings, non-interlaced PAL */
+#define PSX_FRAME_CYCLES(mhz)    ((uint32_t)((PSX_CPU_HZ * 1000ull + (mhz) / 2u) / (mhz)))
+#define PSX_VBLANK_CYCLES_NTSC   PSX_FRAME_CYCLES(PSX_NTSC_VRATE_MILLIHZ)  /* 566122 */
+#define PSX_VBLANK_CYCLES_PAL    PSX_FRAME_CYCLES(PSX_PAL_VRATE_MILLIHZ)   /* 680629 */
 #define PSX_LINES_PER_FRAME_NTSC 263u
 #define PSX_LINES_PER_FRAME_PAL  314u
 /* Timer 1 HBlank clock: one frame's cycles spread over its scanlines,
- * truncated (NTSC 564480 / 263 = 2146, PAL 677376 / 314 = 2157). */
+ * truncated (NTSC 566122 / 263 = 2152 rem 146, PAL 680629 / 314 = 2167 rem 191);
+ * the remainder is under one cycle per line. */
 #define PSX_HBLANK_CYCLES_NTSC   (PSX_VBLANK_CYCLES_NTSC / PSX_LINES_PER_FRAME_NTSC)
 #define PSX_HBLANK_CYCLES_PAL    (PSX_VBLANK_CYCLES_PAL / PSX_LINES_PER_FRAME_PAL)
 

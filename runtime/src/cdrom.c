@@ -14,6 +14,7 @@
 #include "cdrom_irq.h"
 #include "cdrom_lid.h"
 #include "cdrom_seek.h"
+#include "psx_video_timing.h"
 #include "dma.h"
 #include "spu.h"
 #include "event_ring.h"
@@ -390,7 +391,7 @@ uint32_t g_cd_overwrite_last_frame = 0;
 /* 'instant' disc speed (divisor 0): as fast as the engine can absorb WITHOUT
  * starving the 60Hz VBLANK or the main loop. A flat CDROM_MIN_DELAY collapses
  * every sector read to 500cy, so a multi-sector load fires ~1100 DMA-completion
- * IRQs per VBLANK frame (564480/500). That buries VBLANK and the main loop
+ * IRQs per VBLANK frame (566122/500). That buries VBLANK and the main loop
  * under a DMA-IRQ storm — the field loop is pinned and the watchdog reports a
  * freeze. Floor the per-response period so at most ~CDROM_INSTANT_MAX_PER_FRAME
  * sector IRQs land per frame. At 32/frame this is still ~3x faster than 4x
@@ -399,7 +400,6 @@ uint32_t g_cd_overwrite_last_frame = 0;
  * guarantee in interrupts.c (the real anti-starvation fix); this floor keeps
  * the exception VOLUME sane so the framerate doesn't collapse. Tunable via the
  * MAX_PER_FRAME knob. */
-#define VBLANK_CYCLES_NTSC          564480   /* 33.8688 MHz / 60 Hz; matches interrupts.c */
 #define CDROM_INSTANT_MAX_PER_FRAME_DEFAULT 32
 #define CDROM_SINGLE_SPEED_SECTOR_CYCLES 451584
 
@@ -407,7 +407,7 @@ uint32_t g_cd_overwrite_last_frame = 0;
  * game.toml [runtime] instant_max_per_frame, the cdrom_instant_rate TCP
  * command (in-session A/B without rebuilds), and — step 4 — the
  * turbo-through-loads predicate. Period floors at CDROM_MIN_DELAY, so the
- * effective ceiling is VBLANK_CYCLES_NTSC/CDROM_MIN_DELAY ≈ 1128/frame. */
+ * effective ceiling is PSX_VBLANK_CYCLES_NTSC/CDROM_MIN_DELAY ≈ 1132/frame. */
 static int g_instant_max_per_frame = CDROM_INSTANT_MAX_PER_FRAME_DEFAULT;
 
 /* Config-driven, game-specific warm-load routes. These deliberately change
@@ -569,14 +569,14 @@ void cdrom_set_instant_rate(int per_frame) {
 int cdrom_get_instant_rate(void) { return g_instant_max_per_frame; }
 
 static int instant_period(void) {
-    int p = VBLANK_CYCLES_NTSC / g_instant_max_per_frame;
+    int p = (int)PSX_VBLANK_CYCLES_NTSC / g_instant_max_per_frame;
     return p < CDROM_MIN_DELAY ? CDROM_MIN_DELAY : p;
 }
 
 static int warm_route_period(void) {
     const CDROMWarmRoute *route = warm_route_current();
     int rate = route ? route->rate : CDROM_INSTANT_MAX_PER_FRAME_DEFAULT;
-    int p = VBLANK_CYCLES_NTSC / rate;
+    int p = (int)PSX_VBLANK_CYCLES_NTSC / rate;
     return p < CDROM_MIN_DELAY ? CDROM_MIN_DELAY : p;
 }
 
