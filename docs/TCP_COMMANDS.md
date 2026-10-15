@@ -48,7 +48,7 @@ Columns: **N** = native, **D** = DuckStation oracle.
 
 | Command | N | D | Params | Description |
 |---|---|---|---|---|
-| `ping` / `frame` | ✓ | ✓ | — | Heartbeat + current frame number |
+| `ping` / `frame` | ✓ | ✓ | — | Heartbeat + current frame number. `ping` answers on both ports with `frame` and `guest_cycles` (native answers from its I/O thread, so it stays answerable while the emu thread is busy; `pong` and `io_thread` are native-only extras) |
 | `get_registers` (`regs`) | ✓ | ✓ | — | All 32 GPRs + PC + HI + LO (native also: COP0 SR/Cause/EPC, I_STAT, I_MASK) |
 | `read_ram` | ✓ | ✓ | `addr`, `len` | Read bytes from PS1 address space as hex string — up to the full 2 MB in ONE response line. `dump_ram` is an alias (the old chunked multi-line variant is gone: it broke the one-request/one-response protocol and wedged the server) |
 | `write_ram` | ✓ | ✓ | `addr`, `val` | Write **one byte** to PS1 address space. Note the parameter is `val` (not `hex`), and the write is a single byte per call — this row previously documented both incorrectly |
@@ -102,7 +102,7 @@ Columns: **N** = native, **D** = DuckStation oracle.
 | `frame_timeseries` | ✓ | ✓ | `start`, `end` | Compact timeseries, max 200 frames |
 | `set_snapshot` | ✓ | ✓ | `slot`, `addr`, `size` | Configure per-frame RAM snapshot region (slots 0-3) |
 | `get_snapshots` | ✓ | ✓ | — | Show snapshot config |
-| `screenshot` | ✓ | ✓ | `path` (optional) | Write a **PNG** of the current display to `path` (default `psx_screenshot.png` in the runtime cwd); single metadata response `{path,width,height}`. `screenshot_file` is an alias; the old inline-hex-row `screenshot` is gone (it streamed h+1 response lines per request and poisoned the connection) |
+| `screenshot` | ✓ | ✓ | `path` (optional) | Write a **PNG** of the current display to `path` (default `psx_screenshot.png` in the runtime cwd); single metadata response `{path,width,height}`. Native answers `ok:true` only after the PNG is written to `<path>.tmp`, flushed, closed, size-checked and renamed over `path`; any failure answers `ok:false` with the reason (`display disabled` while the GPU display is off, as during early BIOS boot, `cannot open file`, `png write failed`, `png size mismatch on disk`, `cannot move png into place`) and leaves no temp file. A capture is therefore never half-written under `path`. `screenshot_file` is an alias; the old inline-hex-row `screenshot` is gone (it streamed h+1 response lines per request and poisoned the connection) |
 | `scanline` | ✓ |   | optional `on` (0/1), optional `pct` (0..100) | Live A/B toggle for the present-time scanline post-process. Omit `on` to keep the current toggle, omit `pct` to keep the current strength; reports `{scanlines, strength_pct}`. Same state the F6 hotkey and `[video] scanlines` drive |
 | `first_failure` | ✓ |   | — | Find first divergence point between runs (native-side tracking) |
 | `read_frame_ram` | ✓ |   | `addr`, `len`, `frame` | Read RAM **as of a specific frame** (from ring buffer) |

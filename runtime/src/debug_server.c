@@ -17,6 +17,7 @@
 #endif
 #include <time.h>
 #include "cyc_watch_region.h"
+#include "debug_pong.h"
 #include "debug_server.h"
 #include "host_launch_timing.h"
 #include "host_sampler.h"
@@ -10310,12 +10311,9 @@ static void handle_screenshot_file(int id, const char *json)
     if (!json_get_str(json, "path", path, sizeof(path)))
         strncpy(path, "psx_screenshot.png", sizeof(path) - 1);
     path[sizeof(path) - 1] = '\0';
-    FILE *f = fopen(path, "wb");
-    if (!f) { send_err(id, "cannot open file"); return; }
-
     /* Gather pixels top-down, RGB. */
     uint8_t *rgb = (uint8_t *)malloc((size_t)w * h * 3);
-    if (!rgb) { fclose(f); send_err(id, "alloc failed"); return; }
+    if (!rgb) { send_err(id, "alloc failed"); return; }
     for (uint32_t y = 0; y < h; y++) {
         for (uint32_t x = 0; x < w; x++) {
             uint8_t r, g, b;
@@ -10324,10 +10322,9 @@ static void handle_screenshot_file(int id, const char *json)
             p[0] = r; p[1] = g; p[2] = b;
         }
     }
-    int ok = png_write_rgb(f, rgb, w, h);
+    const char *werr = png_write_file_verified(path, rgb, w, h);
     free(rgb);
-    fclose(f);
-    if (!ok) { send_err(id, "png encode failed"); return; }
+    if (werr) { send_err(id, werr); return; }
 
     send_fmt("{\"id\":%d,\"ok\":true,\"path\":\"%s\",\"width\":%u,\"height\":%u}",
              id, path, w, h);
@@ -10838,11 +10835,9 @@ static const char *write_wide_png(const char *path, int *out_w, int *out_h)
         }
     }
     free(buf);
-    FILE *f = fopen(path, "wb");
-    if (!f) { free(rgb); return "cannot open file"; }
-    int ok = png_write_rgb(f, rgb, (uint32_t)W, (uint32_t)H);
-    free(rgb); fclose(f);
-    if (!ok) return "png encode failed";
+    const char *werr = png_write_file_verified(path, rgb, (uint32_t)W, (uint32_t)H);
+    free(rgb);
+    if (werr) return werr;
     if (out_w) *out_w = W;
     if (out_h) *out_h = H;
     return NULL;
@@ -17070,8 +17065,11 @@ static int io_thread_main(void *arg)
 
         /* Lock-free liveness fast-path (survives an emu-thread freeze). */
         if (strstr(req, "\"ping\"")) {
-            const char *pong = "{\"id\":0,\"ok\":true,\"pong\":true,\"io_thread\":true}\n";
-            send_all_blocking(c, pong, strlen(pong));
+            /* Frame and cycle are read without the emu thread (diagnostic, torn
+             * reads cannot happen on aligned 64-bit loads). */
+            char pong[160];
+            int pn = debug_format_pong(pong, sizeof pong, s_frame_count, psx_get_cycle_count());
+            if (pn > 0) send_all_blocking(c, pong, (size_t)pn);
             sock_close(c);
             continue;
         }
