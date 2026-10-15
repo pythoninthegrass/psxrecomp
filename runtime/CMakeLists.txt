@@ -1399,6 +1399,10 @@ if(BUILD_TESTING)
     target_include_directories(cdrom_irq_mask_test PRIVATE src)
     add_test(NAME cdrom_irq_mask_test COMMAND cdrom_irq_mask_test)
 
+    add_executable(cdrom_seek_test tests/test_cdrom_seek.c)
+    target_include_directories(cdrom_seek_test PRIVATE src)
+    add_test(NAME cdrom_seek_test COMMAND cdrom_seek_test)
+
     add_executable(cdrom_lid_state_test tests/test_cdrom_lid_state.c)
     target_include_directories(cdrom_lid_state_test PRIVATE src)
     add_test(NAME cdrom_lid_state_test COMMAND cdrom_lid_state_test)

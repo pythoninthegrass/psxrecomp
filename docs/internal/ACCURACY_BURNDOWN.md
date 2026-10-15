@@ -342,6 +342,31 @@ bug**, not timing.
     and read response timing, and the controller-version divergence above,
     which changes the shell's CD-init path. The probe's overlay timings start
     after the read and match Beetle.
+  - **DONE 2026-10-15 (TASK-011): seek latency is a function of head travel and
+    drive state.** Was a flat 0x800 / four-sector-period switch and a fixed
+    two-period ReadN start; native was the LESS faithful side (not a
+    `KNOWN_DIVERGENCES` item). Now `runtime/src/cdrom_seek.h` carries Beetle's
+    `CalcSeekTime` (travel at 1 s per 324000 sectors with a 20000-cycle floor,
+    +300 ms at >= 2250 sectors, restart-from-pause 1237952 cycles at 2x and twice
+    that at 1x, +1 s spin-up when stopped), without the 0..25000 random term.
+    SeekL = seek + one sector period, SeekP = seek, ReadN/ReadS implicit seek =
+    the same seek, first INT1 = seek + three sector periods (the two-slot
+    SectorPipe releases a sector when the third arrives). Drive-paused state is
+    set by Pause, ReadTOC and Init and cleared by Seek/Read/Stop; Init also moves
+    the head to 00:02:00 (Beetle Command_Reset). psx-spx has no seek-time figures
+    (only ReadTOC ~1 s, Stop ~1 s, Reset 1/8 s), so the constants rest on Beetle
+    alone and are not confirmed against hardware.
+    Measured, Azure Dreams SCPH1001, native `PSX_BIOS_HLE=0` vs stock Beetle,
+    anchored at each side's first SIO0 event, to the first channel-2 DMA:
+    offset (Beetle minus native) 51,139,382 -> 2,711,466 cycles (reduced by
+    48,427,916). Each of the nine ReadN ack-to-first-INT1 latencies now matches
+    Beetle to within 2.8k-19.5k cycles (the omitted random term). Residual
+    2.71M: one 318k step at the first INT3 group, a 1.15M step at a DMA event
+    (detail 16), a 248k step at a later INT3, about 112k of omitted random term,
+    and the rest spread over steps under 50k; Beetle also records eight INT3
+    edges native does not (rising-edge difference, not timing). The step causes
+    were not determined. Regression check: `cdrom_seek_test` pins a same-position
+    and <= 16-sector seek at the 20000-cycle floor.
 - [ ] **DMA**: all 7 channels, block/linked-list/chain modes, timing, DICR/DPCR —
   Beetle dma.cpp; psx-spx "DMA".
 - [ ] **MDEC**: macroblock decode, IDCT, color conversion, RLE — Beetle mdec.cpp;
