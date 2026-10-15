@@ -1573,6 +1573,10 @@ if(BUILD_TESTING)
     target_include_directories(cdrom_sector_fifo_test PRIVATE include src)
     add_test(NAME cdrom_sector_fifo_test COMMAND cdrom_sector_fifo_test)
 
+    add_executable(cdrom_seek_test tests/test_cdrom_seek.c)
+    target_include_directories(cdrom_seek_test PRIVATE src)
+    add_test(NAME cdrom_seek_test COMMAND cdrom_seek_test)
+
     add_executable(cdrom_lid_state_test tests/test_cdrom_lid_state.c)
     target_include_directories(cdrom_lid_state_test PRIVATE src)
     add_test(NAME cdrom_lid_state_test COMMAND cdrom_lid_state_test)
