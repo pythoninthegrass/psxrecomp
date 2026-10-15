@@ -31,8 +31,8 @@ Keep the checkout outside the psxrecomp tree and symlink it in. The symlink
 `beetle-psx` at the psxrecomp root is gitignored.
 
 ```bash
-git clone https://github.com/libretro/beetle-psx-libretro.git ~/dev/beetle-psx
-cd ~/dev/beetle-psx
+git clone https://github.com/libretro/beetle-psx-libretro.git ~/git/beetle-psx
+cd ~/git/beetle-psx
 git checkout 5759277b      # last C++-tree base; newer upstream is plain C
 PSXRECOMP=<path to psxrecomp>
 for p in wtrace_hook sio_trace_hook cdcmd_trace_hook rtrace_irq_hook \
@@ -66,11 +66,11 @@ every hook, so a tree missing any of them fails to link. Two limits:
 ## 2. Static library
 
 ```bash
-cd ~/dev/beetle-psx
+cd ~/git/beetle-psx
 make platform=osx STATIC_LINKING=1 HAVE_LIGHTREC=0 -j"$(sysctl -n hw.ncpu)"
 # With STATIC_LINKING=1 the output is an ar archive, whatever the name says.
 cp mednafen_psx_libretro.dylib libmednafen_psx.a
-ln -s ~/dev/beetle-psx "$PSXRECOMP/beetle-psx"
+ln -s ~/git/beetle-psx "$PSXRECOMP/beetle-psx"
 ```
 
 The build takes about 20 seconds on an M-series Mac.
