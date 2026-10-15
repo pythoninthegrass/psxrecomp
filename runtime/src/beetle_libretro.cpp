@@ -529,6 +529,9 @@ extern "C" int beetle_init_with_disc(const char *bios_path, const char *disc_pat
     s_loaded = true;
     s_frame_count = 0;
 
+    /* Match the native runtime's pad topology: one pad on port 1, none on port 2. */
+    retro_set_controller_port_device(1, RETRO_DEVICE_NONE);
+
     /* Eject the fake disc so BIOS shows the shell selector — only when no
      * real disc was provided. With a real disc, keep it inserted so the
      * BIOS proceeds straight into game boot. */
@@ -688,12 +691,13 @@ extern "C" uint64_t parity_host_cycle(void) { return (uint64_t)beetle_core_get_g
  * so devtrace can compare native vs Beetle like-for-like (INT1-sector cadence,
  * per-channel DMA-completion cadence). */
 extern "C" unsigned psxrecomp_cdc_irq_type(void);   /* beetle-psx cdc.cpp */
+extern "C" unsigned long long beetle_core_get_event_cycles(void); /* beetle-psx lib */
 extern "C" unsigned psxrecomp_dma_int_status(void); /* beetle-psx dma.cpp */
 static void irq_event_callback(int which) {
     uint32_t detail = 0u;
     if (which == 2)      detail = psxrecomp_cdc_irq_type();    /* IRQ_CD  */
     else if (which == 3) detail = psxrecomp_dma_int_status();  /* IRQ_DMA */
-    device_trace_note((uint32_t)which, detail);
+    device_trace_note_at((uint32_t)which, detail, (uint64_t)beetle_core_get_event_cycles());
 }
 
 extern "C" void beetle_get_ram(uint8_t *out_2mb) {

@@ -61,6 +61,10 @@ int  device_trace_is_armed(void);  /* hot-path gate: cheap one-branch check */
  * the process's guest-cycle/frame accessors (shared with parity_trace). */
 void device_trace_note(uint32_t source, uint32_t detail);
 
+/* Same as device_trace_note but stamps the caller-supplied guest cycle (for a
+ * producer that knows the device event's exact time, not the frame clock). */
+void device_trace_note_at(uint32_t source, uint32_t detail, uint64_t cycle);
+
 /* Record a raise only if it is an I_STAT rising edge: prev_stat is I_STAT
  * before the raise. Matches Beetle's IRQ_Assert edge semantics. */
 void device_trace_note_raise(uint32_t prev_stat, uint32_t source, uint32_t detail);
