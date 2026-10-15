@@ -194,7 +194,7 @@ void psx_irq_raise(uint32_t bit, uint32_t detail)
 #define VBLANK_INTERVAL 50000        /* legacy: dispatch-count fallback (unused for VBlank gating now) */
 #define VBLANK_DEFER_STALE_CYCLES (g_psx_vblank_cycles * 10ull)
 /* The VBlank period follows the GPU's live video standard (GP1(08h) bit 3):
- * NTSC 564480 cycles (60 Hz), PAL 677376 (50 Hz). See psx_video_timing.h. */
+ * NTSC 566122 cycles (59.826 Hz), PAL 680629 (49.761 Hz). See psx_video_timing.h. */
 static uint32_t dispatch_count;
 static uint64_t total_checks;
 static uint32_t cycles_since_vblank;  /* incremented by interrupts_advance_cycles */

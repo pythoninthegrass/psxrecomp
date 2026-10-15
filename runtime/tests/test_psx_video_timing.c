@@ -15,7 +15,7 @@
 #include <stdio.h>
 
 #define MAX_EDGES 64u
-#define STEP      16u   /* divides both periods and every switch point */
+#define STEP      1u    /* single-cycle steps: the periods are not multiples of a larger step */
 
 static uint64_t s_now;
 static uint32_t s_since_vblank;
@@ -69,9 +69,9 @@ int main(void) {
 
     /* Power-on default and the derived clocks for each standard. */
     expect_u64("default ntsc", (uint64_t)psx_video_timing_is_pal(), 0u);
-    expect_u64("ntsc period", g_psx_vblank_cycles, 564480u);
+    expect_u64("ntsc period", g_psx_vblank_cycles, 566122u);
     expect_u64("ntsc lines", g_psx_lines_per_frame, 263u);
-    expect_u64("ntsc hblank", g_psx_hblank_cycles, 2146u);
+    expect_u64("ntsc hblank", g_psx_hblank_cycles, 2152u);
     expect_u64("gp1 0x08000008 is pal",
                (uint64_t)psx_gp1_display_mode_is_pal(0x08000008u), 1u);
     expect_u64("gp1 0x08000002 is ntsc",
@@ -84,20 +84,20 @@ int main(void) {
                    psx_video_timing_generation(), gen);
     }
 
-    /* 1. NTSC frames: 564480 cycles each. */
+    /* 1. NTSC frames: 566122 cycles each. */
     run_until(2u * N);
     expect_edge(0, N);
     expect_edge(1, 2u * N);
 
-    /* 2. NTSC -> PAL mid-frame: the frame in progress ends 677376 from its
-     * start, then every frame is 677376. */
+    /* 2. NTSC -> PAL mid-frame: the frame in progress ends 680629 from its
+     * start, then every frame is 680629. */
     {
         const uint32_t gen = psx_video_timing_generation();
         run_until(2u * N + 100000u);
         gp1_display_mode(0x08000008u);           /* PAL, 320 wide */
-        expect_u64("pal after GP1(08h) bit 3", g_psx_vblank_cycles, 677376u);
+        expect_u64("pal after GP1(08h) bit 3", g_psx_vblank_cycles, 680629u);
         expect_u64("pal lines", g_psx_lines_per_frame, 314u);
-        expect_u64("pal hblank", g_psx_hblank_cycles, 2157u);
+        expect_u64("pal hblank", g_psx_hblank_cycles, 2167u);
         expect_u64("generation bumped", psx_video_timing_generation(), gen + 1u);
     }
     run_until(2u * N + 3u * P);
@@ -107,13 +107,13 @@ int main(void) {
     expect_edge(4, 2u * N + 3u * P);
 
     /* 3. PAL -> NTSC before the NTSC period elapsed (WipEout 3 PAL + NTSC
-     * patch writes GP1(08h)=0x08000002): the frame ends 564480 from its
-     * start, then every frame is 564480. */
+     * patch writes GP1(08h)=0x08000002): the frame ends 566122 from its
+     * start, then every frame is 566122. */
     {
         const uint64_t start = 2u * N + 3u * P;
         run_until(start + 200000u);
         gp1_display_mode(0x08000002u);
-        expect_u64("ntsc after GP1(08h) bit 3 clear", g_psx_vblank_cycles, 564480u);
+        expect_u64("ntsc after GP1(08h) bit 3 clear", g_psx_vblank_cycles, 566122u);
         run_until(start + 3u * N);
         expect_u64("edges through ntsc", s_edge_count, 8u);
         expect_edge(5, start + N);
@@ -123,11 +123,11 @@ int main(void) {
 
     /* 4. PAL -> NTSC after the NTSC period already elapsed: the frame in
      * progress ends at the switch; the overshoot carries, so the frame grid
-     * stays on start + k * 564480. */
+     * stays on start + k * 566122. */
     {
         const uint64_t start = 2u * N + 3u * P + 3u * N;
         gp1_display_mode(0x08000008u);           /* back to PAL at an edge */
-        run_until(start + 600000u);              /* past 564480, short of PAL */
+        run_until(start + 600000u);              /* past 566122, short of PAL */
         expect_u64("no edge yet in pal frame", s_edge_count, 8u);
         gp1_display_mode(0x08000000u);           /* NTSC */
         expect_u64("edge at switch", s_edge_count, 9u);

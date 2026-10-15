@@ -367,6 +367,24 @@ bug**, not timing.
     edges native does not (rising-edge difference, not timing). The step causes
     were not determined. Regression check: `cdrom_seek_test` pins a same-position
     and <= 16-sector seek at the 20000-cycle floor.
+  - **DONE 2026-10-15 (TASK-012): the frame period follows the real vertical
+    rate.** `PSX_VBLANK_CYCLES_NTSC` was a round 60 Hz (564480); it is now
+    33,868,800 Hz / 59.826 Hz = 566,122 cycles (NTSC) and / 49.761 Hz = 680,629
+    (PAL), from psx-spx "GPU Timings" (non-interlaced rates), defined once in
+    `runtime/include/psx_video_timing.h`; `cdrom.c` and `sio.c` now use that
+    definition. psx-spx's "3413 clocks per line" is rounded (53.693175 MHz /
+    (3413 x 263) = 59.817 Hz); 59.826 Hz implies 3412.5. The Beetle oracle's own
+    header comment gives ~16714.85 us per NTSC frame, i.e. 566,121 cycles. The PAL
+    period has no oracle measurement here. HBlank clock: NTSC 2152 (rem 146 per
+    frame), PAL 2167 (rem 191), under one cycle per line.
+    Measured, Azure Dreams SCPH1001, native `PSX_BIOS_HLE=0` vs stock Beetle,
+    anchored at each side's first SIO0, common span 2,584,331,764 cycles: vblank
+    max drift +7,484,337 (4578 vs 4565 events, growing 1,641 cycles per frame)
+    -> -21,029 (4564 vs 4565 events, bounded: +266 at the first frame, -15,951 at
+    the last). timer2 max drift 75,670 -> 48,494. Remaining vblank gap: we use a
+    whole 566,122 against Beetle's 566,121/566,122 mix (mean ~566,121.3), and
+    some native frames run long (566,122 in 2980 of 4563 gaps, others 565,163 to
+    569,030), cause not examined.
 - [ ] **DMA**: all 7 channels, block/linked-list/chain modes, timing, DICR/DPCR —
   Beetle dma.cpp; psx-spx "DMA".
 - [ ] **MDEC**: macroblock decode, IDCT, color conversion, RLE — Beetle mdec.cpp;
