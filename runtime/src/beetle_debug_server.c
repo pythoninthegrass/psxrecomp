@@ -55,7 +55,11 @@ extern uint32_t beetle_get_frame_count(void);
 extern unsigned long long beetle_core_get_guest_cycles(void);
 /* cyc_watch: Beetle half of the per-anchor cycle comparator (libretro.cpp). Same
  * spec/wire-format as the native cyc_watch (runtime/src/debug_server.c). */
-extern void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n);
+extern void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n,
+                                 unsigned long long max_cycles);
+extern void beetle_cyc_watch_get_region(int *in_region, uint32_t *abandoned_reentry,
+                                        uint32_t *abandoned_overrun,
+                                        unsigned long long *max_cycles);
 extern void beetle_cyc_watch_clear(void);
 extern void beetle_cyc_watch_get_state(uint32_t *anchor_raw, uint32_t *anchor_phys,
                                        uint32_t *end_raw, uint32_t *end_phys,
@@ -1476,12 +1480,16 @@ static void h_cyc_watch(int id, const char *json) {
     uint32_t raw = hex_to_u32(pcbuf);
     uint32_t end_raw = json_get_str(json, "end", endbuf, sizeof(endbuf)) ? hex_to_u32(endbuf) : 0u;
     int n = json_get_int(json, "n", 16);
-    beetle_cyc_watch_arm(raw, end_raw, n);
+    char maxbuf[32];
+    unsigned long long max_cycles = json_get_str(json, "max_cycles", maxbuf, sizeof(maxbuf))
+                                        ? strtoull(maxbuf, NULL, 0) : 0ull;
+    beetle_cyc_watch_arm(raw, end_raw, n, max_cycles);
     uint32_t araw, aphys, eraw, ephys, maxh, hits; int armed;
     beetle_cyc_watch_get_state(&araw, &aphys, &eraw, &ephys, &maxh, &hits, &armed);
     send_fmt("{\"id\":%d,\"ok\":true,\"anchor\":\"0x%08X\",\"anchor_phys\":\"0x%08X\","
-             "\"end\":\"0x%08X\",\"end_phys\":\"0x%08X\",\"region\":%d,\"max_hits\":%u}\n",
-             id, araw, aphys, eraw, ephys, (ephys != 0u) ? 1 : 0, maxh);
+             "\"end\":\"0x%08X\",\"end_phys\":\"0x%08X\",\"region\":%d,\"max_hits\":%u,"
+             "\"max_cycles\":%llu}\n",
+             id, araw, aphys, eraw, ephys, (ephys != 0u) ? 1 : 0, maxh, max_cycles);
 }
 static void h_cyc_watch_clear(int id, const char *json) {
     (void)json; beetle_cyc_watch_clear(); send_fmt("{\"id\":%d,\"ok\":true}\n", id);
@@ -1490,14 +1498,18 @@ static void h_cyc_watch_dump(int id, const char *json) {
     (void)json;
     uint32_t araw, aphys, eraw, ephys, maxh, hits; int armed;
     beetle_cyc_watch_get_state(&araw, &aphys, &eraw, &ephys, &maxh, &hits, &armed);
-    size_t cap = 256 + (size_t)hits * 96;
+    int in_region; uint32_t ab_re, ab_ov; unsigned long long max_cycles;
+    beetle_cyc_watch_get_region(&in_region, &ab_re, &ab_ov, &max_cycles);
+    size_t cap = 384 + (size_t)hits * 96;
     char *buf = (char *)malloc(cap);
     if (!buf) { send_err(id, "alloc"); return; }
     int pos = snprintf(buf, cap,
         "{\"id\":%d,\"ok\":true,\"anchor\":\"0x%08X\",\"anchor_phys\":\"0x%08X\","
         "\"end\":\"0x%08X\",\"end_phys\":\"0x%08X\",\"region\":%d,"
-        "\"armed\":%d,\"max_hits\":%u,\"hits\":%u,\"entries\":[",
-        id, araw, aphys, eraw, ephys, (ephys != 0u) ? 1 : 0, armed, maxh, hits);
+        "\"armed\":%d,\"max_hits\":%u,\"hits\":%u,\"in_region\":%d,"
+        "\"abandoned\":%u,\"abandoned_reentry\":%u,\"abandoned_overrun\":%u,\"entries\":[",
+        id, araw, aphys, eraw, ephys, (ephys != 0u) ? 1 : 0, armed, maxh, hits,
+        in_region, ab_re + ab_ov, ab_re, ab_ov);
     for (uint32_t i = 0; i < hits; i++) {
         uint32_t hi, pc; unsigned long long cyc;
         if (!beetle_cyc_watch_get(i, &hi, &pc, &cyc)) break;

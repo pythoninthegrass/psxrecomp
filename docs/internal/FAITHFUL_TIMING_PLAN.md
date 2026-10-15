@@ -168,12 +168,18 @@ First concrete target: make the 0x80017FC4 inter-hit Δ 46 -> 91 (== Beetle).
   single-anchor entry-to-next-entry window SPANS MULTIPLE functions (80017FC4 ->
   8001EFFC -> ... -> re-call). => single-anchor Δ is TOO COARSE for per-component
   attribution; the 56/91 covers code we haven't disassembled.
-- TOOLING NEXT (before more cost components): add a TWO-ANCHOR region mode to cyc_watch
-  (capture cycles at region START anchor A and END anchor B; report Δ(B−A) per pass) on
-  BOTH backends. Then validate the cost model on a KNOWN, fully-disassembled single
-  code path (no calls/loops crossing out) — e.g. a leaf function entry→its terminator.
-  That gives rigorous per-component attribution instead of an opaque multi-fn window.
-  Only then resume adding components (fetch / mult-div-stall / GTE / load-absorb).
+- TOOLING: the TWO-ANCHOR region mode of cyc_watch ALREADY SHIPPED (native
+  runtime/src/debug_server.c `cyc_watch_observe`, Beetle beetle_libretro.cpp
+  `cyc_watch_pc_cb`, both through the shared runtime/include/cyc_watch_region.h;
+  `tools/cycle_compare.py <A> --end <B>`, env `PSX_CYC_WATCH=<A>-<B>`). Each entry is
+  the Δcycles of one A->B pass. A pass is ABANDONED (counted, not recorded) when A is
+  re-entered before B, or when it outlives the declared `max_cycles` bound (the
+  func_80017FC4 tail-call case); `cyc_watch_dump` reports `abandoned`,
+  `abandoned_reentry`, `abandoned_overrun`, `in_region`. Without `max_cycles` a region
+  left via a tail call that never re-enters A is only visible as `in_region` = 1.
+  Validate each cost component on a KNOWN, fully-disassembled single code path (no
+  calls/loops crossing out) using that mode, then resume adding components
+  (fetch / mult-div-stall / GTE / load-absorb). Worked example: docs/CYC_WATCH_REGION.md.
 
 ### Components to transcribe (from in-tree Beetle + psx-spx; verify each by Δ)
 The ~2x gap is dominated by what 1/insn ignores. Implement one at a time, re-measure Δ:
@@ -201,7 +207,7 @@ on a fixed region -> next.
   time. The comparator (cyc_watch + cycle_compare.py) is the validation backbone.
 
 ## 4. Tooling / oracle
-- Runtime TCP port 4500; Beetle oracle 4382. Always-on rings: `event_ring`,
+- Runtime TCP port 4370; Beetle oracle 4380 (psx-beetle's built-in default is 4382; launch with `--port 4380` to match the runtime pairing). Always-on rings: `event_ring`,
   `wtrace_all` (write trace; `newest=1`). `freeze_check` has slice-trace + cycle
   fields. `PSX_EXIT_HALT=1` halts-and-serves at the pc=0 exit for post-mortem.
 - Build runtime: `cmake --build Tomba2Recomp/build-t2 --target psx-runtime`

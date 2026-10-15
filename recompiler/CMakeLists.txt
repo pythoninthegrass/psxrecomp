@@ -398,6 +398,12 @@ if(BUILD_TESTING)
         ../runtime/src/guest_tty.c)
     target_include_directories(guest_tty_test PRIVATE ../runtime/include)
     add_test(NAME guest_tty_test COMMAND guest_tty_test)
+    add_executable(cyc_watch_region_test ../runtime/tests/test_cyc_watch_region.c)
+    target_include_directories(cyc_watch_region_test PRIVATE ../runtime/include)
+    target_compile_options(cyc_watch_region_test PRIVATE
+        $<$<CXX_COMPILER_ID:MSVC>:/UNDEBUG>
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-UNDEBUG>)
+    add_test(NAME cyc_watch_region_test COMMAND cyc_watch_region_test)
 
     add_executable(debug_trace_ranges_test
         ../runtime/tests/test_debug_trace_ranges.c
@@ -940,6 +946,16 @@ if(BUILD_TESTING)
             NAME aot_overlay_methods
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests/test_aot_overlay_pipeline.py
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+        add_test(
+            NAME cycle_compare_abandonment
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests/test_cycle_compare.py
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
+        add_test(
+            NAME devtrace_anchor
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/../tools/tests/test_devtrace_anchor.py
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..)
         add_test(
             NAME counted_relocation_discovery

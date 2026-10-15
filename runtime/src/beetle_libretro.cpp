@@ -11,6 +11,7 @@
  *   - fntrace ring buffer (beetle_fntrace_arm/disarm/reset/get/total/...)
  */
 
+#include "cyc_watch_region.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1318,8 +1319,7 @@ static uint32_t s_cw_anchor_raw = 0, s_cw_anchor_phys = 0;
 static uint32_t s_cw_end_raw = 0, s_cw_end_phys = 0;
 static uint32_t s_cw_max_hits = 0, s_cw_hits = 0;
 static int      s_cw_armed = 0;
-static int      s_cw_in_region = 0;
-static uint64_t s_cw_region_start = 0;
+static CycWatchRegion s_cw_region;   /* A..B state machine shared with psx-runtime */
 
 static void cyc_watch_disarm(void) {
     s_cw_armed = 0;
@@ -1330,18 +1330,13 @@ static void cyc_watch_disarm(void) {
 static void cyc_watch_pc_cb(uint32_t pc, uint64_t guest_cycles) {
     const uint32_t phys = pc & 0x1FFFFFFFu;
     if (s_cw_end_phys != 0u) {                      /* REGION mode (A..B) */
-        if (!s_cw_in_region) {
-            if (phys == s_cw_anchor_phys) {
-                s_cw_region_start = guest_cycles;
-                s_cw_in_region = 1;
-            }
-        } else if (phys == s_cw_end_phys) {
+        uint64_t delta;
+        if (cyc_watch_region_step(&s_cw_region, phys, guest_cycles, &delta)) {
             BeetleCycWatchEntry *e = &s_cw_ring[s_cw_hits];
             e->hit_index = s_cw_hits;
             e->pc        = phys;
-            e->cycles    = guest_cycles - s_cw_region_start;
+            e->cycles    = delta;
             s_cw_hits++;
-            s_cw_in_region = 0;
             if (s_cw_hits >= s_cw_max_hits) cyc_watch_disarm();
         }
         return;
@@ -1355,7 +1350,8 @@ static void cyc_watch_pc_cb(uint32_t pc, uint64_t guest_cycles) {
     if (s_cw_hits >= s_cw_max_hits) cyc_watch_disarm();
 }
 
-extern "C" void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n) {
+extern "C" void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n,
+                                     uint64_t max_cycles) {
     if (n < 1) n = 1;
     if (n > BEETLE_CYC_WATCH_CAP) n = BEETLE_CYC_WATCH_CAP;
     cyc_watch_disarm();                             /* no sampling mid-reset */
@@ -1365,8 +1361,7 @@ extern "C" void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int 
     s_cw_end_phys     = end_raw & 0x1FFFFFFFu;
     s_cw_max_hits     = (uint32_t)n;
     s_cw_hits         = 0;
-    s_cw_in_region    = 0;
-    s_cw_region_start = 0;
+    cyc_watch_region_init(&s_cw_region, s_cw_anchor_phys, s_cw_end_phys, max_cycles);
     std::memset(s_cw_ring, 0, sizeof(s_cw_ring));
     s_cw_armed = 1;
     g_psxrecomp_pc_cb = cyc_watch_pc_cb;
@@ -1376,8 +1371,7 @@ extern "C" void beetle_cyc_watch_clear(void) {
     s_cw_hits = 0;
     s_cw_anchor_raw = s_cw_anchor_phys = 0;
     s_cw_end_raw = s_cw_end_phys = 0;
-    s_cw_in_region = 0;
-    s_cw_region_start = 0;
+    cyc_watch_region_init(&s_cw_region, 0, 0, 0);
     std::memset(s_cw_ring, 0, sizeof(s_cw_ring));
 }
 extern "C" void beetle_cyc_watch_get_state(uint32_t *anchor_raw, uint32_t *anchor_phys,
@@ -1390,6 +1384,14 @@ extern "C" void beetle_cyc_watch_get_state(uint32_t *anchor_raw, uint32_t *ancho
     if (max_hits)    *max_hits    = s_cw_max_hits;
     if (hits)        *hits        = s_cw_hits;
     if (armed)       *armed       = s_cw_armed;
+}
+extern "C" void beetle_cyc_watch_get_region(int *in_region, uint32_t *abandoned_reentry,
+                                           uint32_t *abandoned_overrun,
+                                           unsigned long long *max_cycles) {
+    if (in_region)         *in_region         = s_cw_region.in_region;
+    if (abandoned_reentry) *abandoned_reentry = s_cw_region.abandoned_reentry;
+    if (abandoned_overrun) *abandoned_overrun = s_cw_region.abandoned_overrun;
+    if (max_cycles)        *max_cycles        = (unsigned long long)s_cw_region.max_cycles;
 }
 extern "C" int beetle_cyc_watch_get(uint32_t i, uint32_t *hit_index, uint32_t *pc,
                                    unsigned long long *cyc) {
