@@ -1,4 +1,5 @@
 """Contracts for the anchored two-port devtrace comparison, over invented event streams."""
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -123,6 +124,36 @@ class AlignTests(unittest.TestCase):
         res = da.align(native, beetle, SIO0, 0)
         self.assertEqual((res["extra_native"], res["extra_beetle"], res["extra_cost"]), (0, 0, 0))
         self.assertEqual(res["timing_cost"], 60)
+
+
+class RecordedFixtureTests(unittest.TestCase):
+    """403-event slices recorded from native (PSX_BIOS_HLE=0) and stock Beetle around the first SIO0 event."""
+
+    @classmethod
+    def setUpClass(cls):
+        path = Path(__file__).resolve().parent / "fixtures" / "devtrace_anchor_recorded.json"
+        data = json.loads(path.read_text())
+        cls.native, cls.beetle = data["native"], data["beetle"]
+
+    def test_anchors_land_on_the_recorded_first_sio0_cycles(self):
+        n = self.native[da.find_anchor(self.native, SIO0, 0)]
+        b = self.beetle[da.find_anchor(self.beetle, SIO0, 0)]
+        self.assertEqual((n["cycle"], b["cycle"]), (421_670_333, 265_572_476))
+
+    def test_recorded_window_that_lost_its_head_is_aged_out(self):
+        shifted = [dict(e, seq=e["seq"] + 4586) for e in self.native]
+        with self.assertRaises(da.AnchorAgedOut):
+            da.find_anchor(shifted, SIO0, 0)
+
+    def test_recorded_report_counts_and_drift(self):
+        rows = {r["name"]: r for r in da.report(self.native, self.beetle, SIO0, 0, 1000)}
+        self.assertEqual((rows["vblank"]["n_count"], rows["vblank"]["b_count"]), (5, 5))
+        self.assertEqual(rows["vblank"]["max_drift"], 8522)
+
+    def test_recorded_alignment_costs_sum_to_the_offset(self):
+        res = da.align(self.native, self.beetle, SIO0, 0)
+        self.assertGreater(res["extra_native"], 0)
+        self.assertEqual(res["extra_cost"] + res["timing_cost"], res["total_offset"])
 
 
 if __name__ == "__main__":
