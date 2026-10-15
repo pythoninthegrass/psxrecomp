@@ -12,6 +12,7 @@
 #define PSX_PNG_WRITE_H
 
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -118,6 +119,32 @@ static int png_write_rgb(FILE *f, const uint8_t *rgb, uint32_t w, uint32_t h) {
 /* Preserve raw 8-bit RGBA, including DuckStation's ST alpha convention. */
 static int png_write_rgba(FILE *f, const uint8_t *rgba, uint32_t w, uint32_t h) {
     return png_write_channels(f, rgba, w, h, 4);
+}
+
+/* Write an RGB buffer to `path` so that success means a complete PNG is on disk:
+ * the data goes to "<path>.tmp", the flush and close are checked, the size on
+ * disk must equal the bytes written, and only then is it renamed over `path`.
+ * Returns NULL on success, else a static string naming the reason; a failure
+ * leaves no temp file. */
+static const char *png_write_file_verified(const char *path, const uint8_t *rgb,
+                                           uint32_t w, uint32_t h) {
+    char tmp[1100];
+    if (snprintf(tmp, sizeof tmp, "%s.tmp", path) >= (int)sizeof tmp) return "path too long";
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return "cannot open file";
+    int ok = png_write_rgb(f, rgb, w, h);
+    if (ok && fflush(f) != 0) ok = 0;
+    long written = ok ? ftell(f) : -1;
+    if (fclose(f) != 0) ok = 0;
+    if (!ok || written <= 0) { remove(tmp); return "png write failed"; }
+    struct stat st;
+    if (stat(tmp, &st) != 0 || (long)st.st_size != written) { remove(tmp); return "png size mismatch on disk"; }
+#ifdef _WIN32
+    remove(path);   /* rename does not replace an existing file on Windows */
+#endif
+    if (rename(tmp, path) != 0) { remove(tmp); return "cannot move png into place"; }
+    if (stat(path, &st) != 0 || (long)st.st_size != written) return "png missing after rename";
+    return NULL;
 }
 
 #endif /* PSX_PNG_WRITE_H */

@@ -1399,6 +1399,15 @@ if(BUILD_TESTING)
     target_include_directories(cdrom_irq_mask_test PRIVATE src)
     add_test(NAME cdrom_irq_mask_test COMMAND cdrom_irq_mask_test)
 
+    add_executable(png_write_verified_test tests/test_png_write_verified.c)
+    target_include_directories(png_write_verified_test PRIVATE src)
+    add_test(NAME png_write_verified_test COMMAND png_write_verified_test
+             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+    add_executable(debug_pong_test tests/test_debug_pong.c)
+    target_include_directories(debug_pong_test PRIVATE src)
+    add_test(NAME debug_pong_test COMMAND debug_pong_test)
+
     add_executable(cdrom_seek_test tests/test_cdrom_seek.c)
     target_include_directories(cdrom_seek_test PRIVATE src)
     add_test(NAME cdrom_seek_test COMMAND cdrom_seek_test)
