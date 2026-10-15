@@ -16,7 +16,7 @@ int  beetle_init(const char* bios_path);
 int  beetle_init_with_disc(const char* bios_path, const char* disc_path);
 int  beetle_wtrace_arm(uint32_t lo, uint32_t hi);
 int  beetle_rtrace_arm(uint32_t lo, uint32_t hi);
-void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n);
+void beetle_cyc_watch_arm(uint32_t anchor_raw, uint32_t end_raw, int n, uint64_t max_cycles);
 void beetle_shutdown(void);
 void beetle_run_frame(uint16_t pad1_buttons);
 int  beetle_get_framebuffer(uint32_t **out_pixels, unsigned *out_w, unsigned *out_h);
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
         uint32_t end = (e && *e == '-') ? (uint32_t)std::strtoul(e + 1, nullptr, 0) : 0u;
         const char* ns = std::getenv("PSX_CYC_WATCH_N");
         int n = (ns && ns[0]) ? (int)std::strtol(ns, nullptr, 0) : 16;
-        beetle_cyc_watch_arm(pc, end, n);
+        beetle_cyc_watch_arm(pc, end, n, 0);
         std::fprintf(stdout, "psx-beetle: cyc_watch armed from boot pc=0x%08X end=0x%08X n=%d\n",
                      pc, end, n);
     }

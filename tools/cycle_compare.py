@@ -59,7 +59,7 @@ Options:
     --hits N          Max anchor hits to record on each side (default 16).
     --wait SECONDS    Seconds to let both backends run after arming before
                       dumping (default 5.0). Both must already be running.
-    --native-port P   psx-runtime debug port (default 4500).
+    --native-port P   psx-runtime debug port (default 4370).
     --beetle-port P   psx-beetle debug port (default 4382).
     --host H          Host for both (default 127.0.0.1).
     --no-arm          Skip arming; just dump+diff what's already recorded.
@@ -77,7 +77,7 @@ import sys
 import time
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_NATIVE_PORT = 4500
+DEFAULT_NATIVE_PORT = 4370
 DEFAULT_BEETLE_PORT = 4382
 
 
@@ -163,10 +163,12 @@ def _is_unknown_command(resp):
             "no such" in err or "not found" in err or err == "")
 
 
-def arm(host, port, label, anchor, hits, end=None):
+def arm(host, port, label, anchor, hits, end=None, max_cycles=None):
     cmd = {"cmd": "cyc_watch", "pc": anchor, "n": hits}
     if end:
         cmd["end"] = end   # two-anchor REGION mode: each entry = Δcycles of one A->B pass
+    if max_cycles:
+        cmd["max_cycles"] = str(max_cycles)   # pass longer than this is abandoned, not recorded
     try:
         resp = query(host, port, cmd)
     except (ConnectionRefusedError, TimeoutError, OSError, ConnectionError) as e:
@@ -211,7 +213,30 @@ def entries_by_index(resp):
 # Diff / report
 # ---------------------------------------------------------------------------
 
+def abandonment_notices(label, resp):
+    """Warnings for a region dump: abandoned passes, or a pass still open."""
+    if not resp.get("region"):
+        return []
+    if "abandoned" not in resp:
+        return [f"{label} does not report abandoned passes; its region deltas "
+                f"cannot be trusted as clean passes."]
+    notices = []
+    if resp["abandoned"]:
+        notices.append(
+            f"{label}: {resp['abandoned']} abandoned pass(es) "
+            f"({resp.get('abandoned_reentry', 0)} re-entry, "
+            f"{resp.get('abandoned_overrun', 0)} overrun) are NOT in the entries; "
+            f"{resp.get('hits', 0)} completed.")
+    if resp.get("in_region"):
+        notices.append(f"{label}: a pass was still open at dump time (A entered, "
+                       f"B not yet reached).")
+    return notices
+
+
 def report(anchor, native_resp, beetle_resp):
+    for label, resp in (("native", native_resp), ("beetle", beetle_resp)):
+        for notice in abandonment_notices(label, resp):
+            print(f"WARNING: {notice}")
     nat = entries_by_index(native_resp)
     bet = entries_by_index(beetle_resp)
 
@@ -301,6 +326,10 @@ def main():
                         "the known code path between two dispatch points). Both anchors "
                         "must be dispatch points (function entry / CPS continuation / "
                         "dirty block). Omit for single-anchor (absolute-cycles-at-anchor).")
+    p.add_argument("--max-cycles", type=int, default=None,
+                   help="REGION mode: abandon any pass that has run longer than this many "
+                        "cycles before reaching END (catches a region left by a tail call; "
+                        "without it only an A re-entry abandons a pass).")
     p.add_argument("--hits", type=int, default=16)
     p.add_argument("--wait", type=float, default=5.0)
     p.add_argument("--native-port", type=int, default=DEFAULT_NATIVE_PORT)
@@ -334,8 +363,8 @@ def main():
 
     try:
         if not opts.no_arm:
-            r_n = arm(host, np_, "native", anchor, opts.hits, end=opts.end)
-            r_b = arm(host, bp_, "beetle", anchor, opts.hits, end=opts.end)
+            r_n = arm(host, np_, "native", anchor, opts.hits, end=opts.end, max_cycles=opts.max_cycles)
+            r_b = arm(host, bp_, "beetle", anchor, opts.hits, end=opts.end, max_cycles=opts.max_cycles)
             print(f"Armed native: {json.dumps(r_n)}")
             print(f"Armed beetle: {json.dumps(r_b)}")
             print(f"Letting both run for {opts.wait:.1f}s ...")

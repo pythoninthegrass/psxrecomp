@@ -16,6 +16,7 @@
 #  define _POSIX_C_SOURCE 200809L
 #endif
 #include <time.h>
+#include "cyc_watch_region.h"
 #include "debug_server.h"
 #include "host_launch_timing.h"
 #include "host_sampler.h"
@@ -2231,10 +2232,8 @@ static uint32_t s_cyc_watch_hits = 0;        /* hits recorded so far */
  * (entry stores absolute cycles at A). Both anchors must be dispatch points (the
  * native observer only fires at function entries / compiled-dispatch / dirty
  * blocks). */
-static uint32_t s_cyc_watch_end_phys = 0;    /* B / end anchor (0 = single-anchor) */
-static uint32_t s_cyc_watch_end_raw  = 0;
-static int      s_cyc_watch_in_region = 0;   /* 1 = saw A, awaiting B */
-static uint64_t s_cyc_watch_region_start = 0;
+static uint32_t s_cyc_watch_end_raw  = 0;    /* B / end anchor as supplied (0 = single-anchor) */
+static CycWatchRegion s_cyc_watch_region;    /* A..B state machine shared with psx-beetle */
 
 /* Hot-path block-entry observer. Called from the compiled-dispatch path
  * (debug_server_trace_dispatch), the universal function-entry hook
@@ -2263,19 +2262,14 @@ static inline void cyc_watch_observe(uint32_t block_leader_phys)
     s_cyc_watch_last_phys  = block_leader_phys;
     s_cyc_watch_last_cycle = cyc_now;
 
-    if (s_cyc_watch_end_phys != 0u) {               /* ── REGION mode (A..B Δ) ── */
-        if (!s_cyc_watch_in_region) {
-            if (block_leader_phys == s_cyc_watch_anchor_phys) {
-                s_cyc_watch_region_start = cyc_now;
-                s_cyc_watch_in_region = 1;
-            }
-        } else if (block_leader_phys == s_cyc_watch_end_phys) {
+    if (s_cyc_watch_region.end_phys != 0u) {        /* ── REGION mode (A..B Δ) ── */
+        uint64_t delta;
+        if (cyc_watch_region_step(&s_cyc_watch_region, block_leader_phys, cyc_now, &delta)) {
             CycWatchEntry *e = &s_cyc_watch_ring[s_cyc_watch_hits];
             e->hit_index       = s_cyc_watch_hits;
             e->pc              = block_leader_phys;
-            e->psx_cycle_count = cyc_now - s_cyc_watch_region_start;  /* Δ(B-A) */
+            e->psx_cycle_count = delta;                               /* Δ(B-A) */
             s_cyc_watch_hits++;
-            s_cyc_watch_in_region = 0;
             if (s_cyc_watch_hits >= s_cyc_watch_max_hits) s_cyc_watch_armed = 0;
         }
         return;
@@ -11781,7 +11775,7 @@ static void handle_wtrace_ranges(int id, const char *json)
 
 /* Arm cyc_watch: clear the ring, mask the anchor(s) to physical, start
  * recording. end_raw != 0 selects REGION mode (each entry = Δcycles A->B). */
-static void cyc_watch_arm(uint32_t raw, uint32_t end_raw, int n)
+static void cyc_watch_arm(uint32_t raw, uint32_t end_raw, int n, uint64_t max_cycles)
 {
     if (n < 1) n = 1;
     if (n > CYC_WATCH_RING_CAP) n = CYC_WATCH_RING_CAP;
@@ -11790,9 +11784,8 @@ static void cyc_watch_arm(uint32_t raw, uint32_t end_raw, int n)
     s_cyc_watch_anchor_raw  = raw;
     s_cyc_watch_anchor_phys = raw & 0x1FFFFFFFu;
     s_cyc_watch_end_raw     = end_raw;
-    s_cyc_watch_end_phys    = end_raw & 0x1FFFFFFFu;
-    s_cyc_watch_in_region   = 0;
-    s_cyc_watch_region_start= 0;
+    cyc_watch_region_init(&s_cyc_watch_region, raw & 0x1FFFFFFFu,
+                          end_raw & 0x1FFFFFFFu, max_cycles);
     s_cyc_watch_max_hits    = (uint32_t)n;
     s_cyc_watch_hits        = 0;
     s_cyc_watch_last_phys   = 0xFFFFFFFFu;   /* reset dedupe state per arm */
@@ -11814,14 +11807,18 @@ static void handle_cyc_watch(int id, const char *json)
     /* Optional second anchor -> REGION mode: each entry = Δcycles of one A->B pass. */
     char endbuf[64];
     uint32_t end_raw = json_get_str(json, "end", endbuf, sizeof(endbuf)) ? hex_to_u32(endbuf) : 0u;
-    cyc_watch_arm(hex_to_u32(pcbuf), end_raw, json_get_int(json, "n", 16));
+    char maxbuf[32];
+    uint64_t max_cycles = json_get_str(json, "max_cycles", maxbuf, sizeof maxbuf)
+                              ? strtoull(maxbuf, NULL, 0) : 0u;
+    cyc_watch_arm(hex_to_u32(pcbuf), end_raw, json_get_int(json, "n", 16), max_cycles);
 
     send_fmt("{\"id\":%d,\"ok\":true,\"anchor\":\"0x%08X\","
              "\"anchor_phys\":\"0x%08X\",\"end\":\"0x%08X\",\"end_phys\":\"0x%08X\","
-             "\"region\":%d,\"max_hits\":%u}",
+             "\"region\":%d,\"max_hits\":%u,\"max_cycles\":%llu}",
              id, s_cyc_watch_anchor_raw, s_cyc_watch_anchor_phys,
-             s_cyc_watch_end_raw, s_cyc_watch_end_phys,
-             (s_cyc_watch_end_phys != 0u) ? 1 : 0, s_cyc_watch_max_hits);
+             s_cyc_watch_end_raw, s_cyc_watch_region.end_phys,
+             (s_cyc_watch_region.end_phys != 0u) ? 1 : 0, s_cyc_watch_max_hits,
+             (unsigned long long)s_cyc_watch_region.max_cycles);
 }
 
 /* cyc_watch_dump — return the recorded ring as JSON. */
@@ -11833,12 +11830,15 @@ static void handle_cyc_watch_dump(int id, const char *json)
              "{\"id\":%d,\"ok\":true,\"anchor\":\"0x%08X\","
              "\"anchor_phys\":\"0x%08X\",\"end\":\"0x%08X\",\"end_phys\":\"0x%08X\","
              "\"region\":%d,\"armed\":%d,\"max_hits\":%u,"
-             "\"hits\":%u,\"entries\":[",
+             "\"hits\":%u,\"in_region\":%d,\"abandoned\":%u,"
+             "\"abandoned_reentry\":%u,\"abandoned_overrun\":%u,\"entries\":[",
              id, s_cyc_watch_anchor_raw, s_cyc_watch_anchor_phys,
-             s_cyc_watch_end_raw, s_cyc_watch_end_phys,
-             (s_cyc_watch_end_phys != 0u) ? 1 : 0,
+             s_cyc_watch_end_raw, s_cyc_watch_region.end_phys,
+             (s_cyc_watch_region.end_phys != 0u) ? 1 : 0,
              s_cyc_watch_armed ? 1 : 0, s_cyc_watch_max_hits,
-             s_cyc_watch_hits);
+             s_cyc_watch_hits, s_cyc_watch_region.in_region,
+             s_cyc_watch_region.abandoned_reentry + s_cyc_watch_region.abandoned_overrun,
+             s_cyc_watch_region.abandoned_reentry, s_cyc_watch_region.abandoned_overrun);
     send_line(buf);
     for (uint32_t i = 0; i < s_cyc_watch_hits; i++) {
         CycWatchEntry *e = &s_cyc_watch_ring[i];
@@ -11860,10 +11860,8 @@ static void handle_cyc_watch_clear(int id, const char *json)
     s_cyc_watch_hits  = 0;
     s_cyc_watch_anchor_phys = 0;
     s_cyc_watch_anchor_raw  = 0;
-    s_cyc_watch_end_phys = 0;
     s_cyc_watch_end_raw  = 0;
-    s_cyc_watch_in_region = 0;
-    s_cyc_watch_region_start = 0;
+    cyc_watch_region_init(&s_cyc_watch_region, 0, 0, 0);
     memset(s_cyc_watch_ring, 0, sizeof(s_cyc_watch_ring));
     send_ok(id);
 }
@@ -16640,7 +16638,7 @@ void debug_server_init(int port)
                 uint32_t pc = (uint32_t)strtoul(cw, &e, 0);
                 uint32_t end = (e && *e == '-') ? (uint32_t)strtoul(e + 1, NULL, 0) : 0u;
                 const char *ns = getenv("PSX_CYC_WATCH_N");
-                cyc_watch_arm(pc, end, (ns && *ns) ? (int)strtol(ns, NULL, 0) : 16);
+                cyc_watch_arm(pc, end, (ns && *ns) ? (int)strtol(ns, NULL, 0) : 16, 0);
                 fprintf(stdout, "psxrecomp: cyc_watch armed from boot pc=0x%08X end=0x%08X n=%u\n",
                         pc, end, s_cyc_watch_max_hits);
             }
