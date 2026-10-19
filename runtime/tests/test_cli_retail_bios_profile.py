@@ -37,14 +37,17 @@ class RetailBiosProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             fw = Path(temporary)
             (fw / "bios").mkdir()
-            (fw / "bios/SCPH5552.toml").write_text('[program]\nid="SCPH-5552"\n', encoding="utf-8")
+            (fw / "bios/SCPH5552.toml").write_text(
+                '[program]\nid="SCPH-5552"\n[recompiler]\nout_dir = "generated"\nout_stem = "SCPH5552"\n',
+                encoding="utf-8")
             progress = Mock()
             with patch.object(cli, "framework_root", return_value=fw), \
                  patch.object(cli, "find_psxrecomp_bios", return_value=fw / "bios-tool"), \
+                 patch.object(cli, "_which_tool", return_value=Path("cmake")), \
                  patch.object(cli.subprocess, "run") as run:
                 run.return_value = subprocess.CompletedProcess([], 0, "BIOS → generated", "")
                 cli.regen_bios_profile(fw, "bios/SCPH5552.toml", progress=progress)
-                args, kwargs = run.call_args
+                args, kwargs = run.call_args_list[0]
                 self.assertEqual(args[0][1:], ["--config", "bios/SCPH5552.toml"])
                 self.assertEqual(kwargs["cwd"], str(fw))
                 self.assertEqual(kwargs["encoding"], "utf-8")
