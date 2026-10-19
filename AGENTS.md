@@ -1,7 +1,5 @@
 # AGENTS.md
 
-# PSXRecomp v4 — Rules
-
 This file is the constitution for v4. Read it at the start of every
 session before doing any work.
 
