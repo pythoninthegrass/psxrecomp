@@ -117,6 +117,7 @@ void debug_server_log_thread_event(int k, struct CPUState *c, uint32_t a, uint32
 { (void)k; (void)c; (void)a; (void)b; (void)d; }
 void ds_note_thread_switch(void) {}
 void device_trace_note(uint32_t s, uint32_t d) { (void)s; (void)d; }
+void device_trace_note_raise(uint32_t p, uint32_t s, uint32_t d) { (void)p; (void)s; (void)d; }
 void event_ring_record(uint16_t k, uint8_t d) { (void)k; (void)d; }
 void event_ring_record_aux(uint16_t k, uint8_t d, uint32_t a) { (void)k; (void)d; (void)a; }
 int  parity_trace_is_armed(void) { return 0; }

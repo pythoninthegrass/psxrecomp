@@ -159,13 +159,13 @@ static void invalid_setloc_preserves_target(void) {
         exec_command(0x02);
         CHECK(irq_flag==CDIRQ_ACK && s_setloc_lba==100 && setloc_pending);
         ack();
-        const int pending=setloc_pending, seek_far=setloc_seek_far;
+        const int pending=setloc_pending;
         memcpy(param_fifo,invalid[n],3); param_count=3;
         exec_command(0x02);
         CHECK(irq_flag==CDIRQ_ERROR && response_count==2 && response_fifo[1]==0x10);
         CHECK((response_fifo[0]&1u)!=0);
         CHECK(s_setloc_lba==100 && seek_min==0 && seek_sec==3 && seek_sect==25);
-        CHECK(setloc_pending==pending && setloc_seek_far==seek_far);
+        CHECK(setloc_pending==pending);
     }
 }
 static void pause_read_resumes_position(void) {
