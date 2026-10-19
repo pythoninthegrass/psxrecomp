@@ -23,6 +23,29 @@ psxrecomp_add_runtime_target(psx-runtime
 # (docs/ENHANCEMENTS.md G1.10). Titles get their <exe>_pgxp the same way.
 
 if(BUILD_TESTING)
+    # Windows UTF-8 text boundary (issue #371): the helpers legacy Windows
+    # relies on, and — with the shipped manifest — a UTF-8 process code page.
+    if(WIN32)
+        add_executable(win_utf8_helpers_test tests/test_win_utf8.cpp)
+        target_include_directories(win_utf8_helpers_test PRIVATE include)
+        add_test(NAME win_utf8_helpers_test COMMAND win_utf8_helpers_test)
+        add_executable(win_utf8_manifest_test tests/test_win_utf8.cpp)
+        target_include_directories(win_utf8_manifest_test PRIVATE include)
+        psxrecomp_windows_manifest(win_utf8_manifest_test)
+        add_test(NAME win_utf8_manifest_test
+                 COMMAND win_utf8_manifest_test --expect-utf8-acp)
+    endif()
+
+    add_executable(debug_socket_shutdown_test tests/test_debug_socket_shutdown.cpp)
+    target_include_directories(debug_socket_shutdown_test PRIVATE src)
+    find_package(Threads REQUIRED)
+    target_link_libraries(debug_socket_shutdown_test PRIVATE Threads::Threads)
+    if(WIN32)
+        target_link_libraries(debug_socket_shutdown_test PRIVATE ws2_32)
+    endif()
+    add_test(NAME debug_socket_shutdown_test COMMAND debug_socket_shutdown_test)
+    set_tests_properties(debug_socket_shutdown_test PROPERTIES TIMEOUT 15)
+
     add_executable(video_texture_filter_test tests/test_video_texture_filter.c src/video_texture_filter.c)
     target_include_directories(video_texture_filter_test PRIVATE include)
     add_test(NAME video_texture_filter_test COMMAND video_texture_filter_test)
@@ -183,7 +206,7 @@ if(BUILD_TESTING)
         add_test(NAME boot_state_execution_test COMMAND boot_state_execution_test)
 
         add_executable(static_match_cache_test tests/test_static_match_cache.c
-            src/overlay_loader.c src/crc32.c)
+            src/overlay_loader.c src/host_span_ring.c src/crc32.c)
         target_include_directories(static_match_cache_test PRIVATE include)
         target_compile_definitions(static_match_cache_test PRIVATE
             PSX_HAS_OVERLAY_DISPATCH PSX_NO_DEBUG_TOOLS)
@@ -214,6 +237,16 @@ if(BUILD_TESTING)
     set(PSX_GL_READBACK_COMPILER_BIN "${_gl_test_default_bin}" CACHE PATH "GCC/MinGW bin for GL fixture")
     find_package(Python3 QUIET COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            add_test(NAME menu_video_snapshot_test COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_menu_video_snapshot.py
+                --cxx ${CMAKE_CXX_COMPILER})
+            add_test(NAME menu_quality_callbacks_test COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_menu_quality_callbacks.py)
+            add_test(NAME host_pause_first_present_test COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_host_pause_first_present.py
+                --cxx ${CMAKE_CXX_COMPILER})
+        endif()
         add_test(NAME guest_implementation_binding_test COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_guest_implementation.py"
             --cmake "${CMAKE_COMMAND}" --compiler "${CMAKE_C_COMPILER}"
@@ -245,6 +278,8 @@ if(BUILD_TESTING)
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mirror_pc_preserved_guards.py")
         add_test(NAME segment_miss_wiring_test COMMAND "${Python3_EXECUTABLE}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_segment_miss_wiring.py")
+        add_test(NAME overlay_unit_defer_wiring_test COMMAND "${Python3_EXECUTABLE}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_overlay_unit_defer_wiring.py")
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             add_test(NAME ws_screen_tags_exec_test COMMAND "${Python3_EXECUTABLE}"
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ws_screen_tags_exec.py"
@@ -711,6 +746,27 @@ if(BUILD_TESTING)
 
     # Standalone serial-pad protocol tests use explicit SIO/device stubs; they
     # cover both DualShock rumble and JogCon wire/state behavior.
+    add_executable(sio_digital_command_test
+        tests/test_sio_digital_command.c
+        src/sio.c)
+    target_include_directories(sio_digital_command_test PRIVATE include)
+    add_test(NAME sio_digital_command_test COMMAND sio_digital_command_test)
+    add_executable(sio_digital_command_multitap_test
+        tests/test_sio_digital_command.c
+        src/sio.c)
+    target_include_directories(sio_digital_command_multitap_test PRIVATE include)
+    target_compile_definitions(sio_digital_command_multitap_test PRIVATE
+        PSX_MAX_PLAYERS=5)
+    add_test(NAME sio_digital_command_multitap_test
+             COMMAND sio_digital_command_multitap_test)
+    add_executable(sio_digital_command_dual_multitap_test
+        tests/test_sio_digital_command.c
+        src/sio.c)
+    target_include_directories(sio_digital_command_dual_multitap_test PRIVATE include)
+    target_compile_definitions(sio_digital_command_dual_multitap_test PRIVATE
+        PSX_MAX_PLAYERS=8)
+    add_test(NAME sio_digital_command_dual_multitap_test
+             COMMAND sio_digital_command_dual_multitap_test)
     add_executable(sio_dualshock_rumble_test
         tests/test_sio_dualshock_rumble.c
         src/sio.c)
@@ -747,6 +803,20 @@ if(BUILD_TESTING)
     add_executable(host_rumble_test tests/test_host_rumble.c)
     target_include_directories(host_rumble_test PRIVATE include)
     add_test(NAME host_rumble_test COMMAND host_rumble_test)
+    # JogCon motor byte -> host wheel haptics ([controller] jogcon_force_feedback).
+    add_executable(jogcon_ffb_test tests/test_jogcon_ffb.c)
+    target_include_directories(jogcon_ffb_test PRIVATE include)
+    add_test(NAME jogcon_ffb_test COMMAND jogcon_ffb_test)
+    # The SDL haptic backend against an SDL3 virtual wheel (no virtual haptic
+    # device exists in SDL; see the test). Skips (77) on SDL2.
+    add_executable(jogcon_ffb_sdl_test tests/test_jogcon_ffb_sdl.cpp
+                   src/psx_jogcon_ffb_sdl.cpp)
+    target_include_directories(jogcon_ffb_sdl_test PRIVATE include)
+    target_link_libraries(jogcon_ffb_sdl_test PRIVATE ${PSX_SDL_LIBRARIES})
+    target_compile_definitions(jogcon_ffb_sdl_test PRIVATE
+        $<$<BOOL:${PSX_SDL3}>:PSX_SDL3=1>)
+    add_test(NAME jogcon_ffb_sdl_test COMMAND jogcon_ffb_sdl_test)
+    set_tests_properties(jogcon_ffb_sdl_test PROPERTIES SKIP_RETURN_CODE 77)
 
     add_executable(controller_type_test tests/test_controller_type.cpp)
     target_include_directories(controller_type_test PRIVATE include)
@@ -793,6 +863,17 @@ if(BUILD_TESTING)
         tests/test_pad_external_input.c src/pad_external_input.c)
     target_include_directories(pad_external_input_test PRIVATE include src)
     add_test(NAME pad_external_input_test COMMAND pad_external_input_test)
+    add_executable(host_overlay_test tests/test_host_overlay.c src/host_overlay.c src/video_texture_filter.c)
+    target_include_directories(host_overlay_test PRIVATE include src)
+    find_package(Threads REQUIRED)
+    target_link_libraries(host_overlay_test PRIVATE Threads::Threads)
+    if(WIN32)
+        target_link_libraries(host_overlay_test PRIVATE shell32)
+    endif()
+    add_test(NAME host_overlay_test COMMAND host_overlay_test)
+    add_executable(psx_menu_host_test tests/test_psx_menu_host.c src/psx_menu_host.c)
+    target_include_directories(psx_menu_host_test PRIVATE include src)
+    add_test(NAME psx_menu_host_test COMMAND psx_menu_host_test)
 
     add_executable(gte_register_access_test
         tests/test_gte_register_access.cpp
@@ -876,7 +957,7 @@ if(BUILD_TESTING)
     endforeach()
 
     foreach(_pgxp_isolated_test
-            gte_register_access_test gte_hle_contract_test pgxp_test pgxp_session_test)
+            gte_register_access_test gte_hle_contract_test pgxp_test pgxp_session_test pgxp_session_hooks_test)
         target_sources(${_pgxp_isolated_test} PRIVATE tests/pgxp_test_mod_memory.cpp)
     endforeach()
 
@@ -972,6 +1053,26 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME ws_local_view_margin_test COMMAND ws_local_view_margin_test)
 
+    # Depth24 GP1(07h) present hold (#636): hold count, upload span and the
+    # staged frame agree across windowed/headless/deferred presents, rollback
+    # replay and disk loads; stale trailing FMV pixels never reach a frame.
+    add_executable(depth24_present_hold_exec_test
+        tests/test_depth24_present_hold_exec.c
+        src/psx_video_timing.c
+        src/gpu_timeline.c)
+    target_include_directories(depth24_present_hold_exec_test PRIVATE include src)
+    if(MINGW)
+        target_compile_options(depth24_present_hold_exec_test PRIVATE -flto)
+        target_link_options(depth24_present_hold_exec_test PRIVATE -flto)
+    endif()
+    if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(depth24_present_hold_exec_test PRIVATE
+            -ffunction-sections -fdata-sections)
+        target_link_options(depth24_present_hold_exec_test PRIVATE
+            $<IF:$<PLATFORM_ID:Darwin>,-Wl$<COMMA>-dead_strip,-Wl$<COMMA>--gc-sections>)
+    endif()
+    add_test(NAME depth24_present_hold_exec_test COMMAND depth24_present_hold_exec_test)
+
     add_executable(ws_view_anchor_test tests/test_ws_view_anchor.c)
     add_executable(ws_view_anchor_gpu_test tests/test_ws_view_anchor_gpu.c
         src/psx_video_timing.c
@@ -1004,6 +1105,9 @@ if(BUILD_TESTING)
     add_executable(ws_repeat_rect_test tests/test_ws_repeat_rect.c)
     target_include_directories(ws_repeat_rect_test PRIVATE include)
     add_test(NAME ws_repeat_rect_test COMMAND ws_repeat_rect_test)
+    add_executable(ws_feedback_rect_test tests/test_ws_feedback_rect.c)
+    target_include_directories(ws_feedback_rect_test PRIVATE include)
+    add_test(NAME ws_feedback_rect_test COMMAND ws_feedback_rect_test)
     add_executable(ws_screen_mask_test tests/test_ws_screen_mask.c)
     target_include_directories(ws_screen_mask_test PRIVATE include)
     if(UNIX)
@@ -1039,6 +1143,31 @@ if(BUILD_TESTING)
             SKIP_REGULAR_EXPRESSION "^SKIP:")
     endif()
 
+    # #636 / PR #660: restore-vs-live IRQ delivery at the restore edge, over
+    # the real scheduler (traps.c) and IRQ delivery (interrupts.c). Compiled
+    # game, BIOS ROM, CPS continuation and interpreted resumes; no pending
+    # IRQ; I_MASK/SR gating; same-edge dedup; null-PC recovery.
+    add_executable(same_thread_rfe_k0_test
+        tests/test_same_thread_rfe_k0.c
+        tests/restore_edge_irq_stubs.c
+        src/traps.c
+        src/interrupts.c)
+    target_include_directories(same_thread_rfe_k0_test PRIVATE include src)
+    foreach(_rfe_mode RANGE 0 3)
+        add_test(NAME same_thread_rfe_k0_mode${_rfe_mode}
+            COMMAND same_thread_rfe_k0_test ${_rfe_mode})
+        set_tests_properties(same_thread_rfe_k0_mode${_rfe_mode} PROPERTIES
+            ENVIRONMENT "PSX_SAME_THREAD_RESTORE=${_rfe_mode}" TIMEOUT 30)
+    endforeach()
+    add_executable(restore_edge_irq_replay_test
+        tests/test_restore_edge_irq_replay.c
+        tests/restore_edge_irq_stubs.c
+        src/traps.c
+        src/interrupts.c)
+    target_include_directories(restore_edge_irq_replay_test PRIVATE include src)
+    add_test(NAME restore_edge_irq_replay_test COMMAND restore_edge_irq_replay_test)
+    set_tests_properties(restore_edge_irq_replay_test PROPERTIES TIMEOUT 60)
+
     add_executable(dma_gpu_linked_list_timing_test
         tests/test_dma_gpu_linked_list_timing.c
         src/dma_gpu_ll.c)
@@ -1069,6 +1198,7 @@ if(BUILD_TESTING)
     add_executable(overlay_capture_retry_test
         tests/test_overlay_capture_retry.cpp
         src/overlay_capture.c
+        src/host_span_ring.c
         src/psx_ram_geometry.c)
     target_include_directories(overlay_capture_retry_test PRIVATE
         include ${PSX_SDL_INCLUDE_DIRS})
@@ -1077,6 +1207,20 @@ if(BUILD_TESTING)
         $<$<BOOL:${PSX_SDL3}>:PSX_SDL3=1>)
     target_link_libraries(overlay_capture_retry_test PRIVATE ${PSX_SDL_LIBRARIES})
     add_test(NAME overlay_capture_retry_test COMMAND overlay_capture_retry_test)
+
+    # PC evidence stays inside the dirty-page run: nothing recorded in the
+    # trailing delay-slot guard word (bead beads-eio.3.190).
+    add_executable(overlay_capture_guard_word_test
+        tests/test_overlay_capture_guard_word.cpp
+        src/overlay_capture.c)
+    target_include_directories(overlay_capture_guard_word_test PRIVATE
+        include ${PSX_SDL_INCLUDE_DIRS})
+    target_compile_definitions(overlay_capture_guard_word_test PRIVATE
+        SDL_MAIN_HANDLED $<$<BOOL:${PSX_SDL3}>:PSX_SDL3=1>)
+    target_link_libraries(overlay_capture_guard_word_test PRIVATE
+        ${PSX_SDL_LIBRARIES})
+    add_test(NAME overlay_capture_guard_word_test
+             COMMAND overlay_capture_guard_word_test)
 
     add_executable(overlay_path_canon_test
         tests/test_overlay_path_canon.c
@@ -1232,6 +1376,7 @@ if(BUILD_TESTING)
     add_executable(mod_runtime_test
         tests/test_mod_runtime.cpp
         src/iso_reader_c.cpp
+        src/host_span_ring.c
         src/mod_runtime.cpp
         src/mod_netplay.c
         src/mod_packages.cpp
@@ -1278,6 +1423,7 @@ if(BUILD_TESTING)
     add_executable(netplay_view_mods_test
         tests/test_netplay_view_mods.cpp
         src/iso_reader_c.cpp
+        src/host_span_ring.c
         src/mod_runtime.cpp
         src/mod_netplay.c
         src/mod_packages.cpp
@@ -1349,7 +1495,8 @@ if(BUILD_TESTING)
     if(WIN32)
         add_executable(autocompile_publication_test
             tests/test_autocompile_publication.c
-            src/autocompile.c)
+            src/autocompile.c
+            src/host_span_ring.c)
         target_include_directories(autocompile_publication_test PRIVATE include)
         target_compile_definitions(autocompile_publication_test PRIVATE
             PSX_AUTOCOMPILE_TEST=1)
@@ -1361,11 +1508,34 @@ if(BUILD_TESTING)
         # broken autocompile silently degrades the whole run to the interpreter.
         add_executable(autocompile_degraded_test
             tests/test_autocompile_degraded.c
-            src/autocompile.c)
+            src/autocompile.c
+            src/host_span_ring.c)
         target_include_directories(autocompile_degraded_test PRIVATE include)
         add_test(NAME autocompile_degraded_test
                  COMMAND autocompile_degraded_test)
+
+        # A toolchain staged from a different emitter writes shards into a cache directory the
+        # runtime never reads (LoD playtest 2026-10-12); the runtime must refuse it loudly.
+        add_executable(autocompile_toolchain_hash_test
+            tests/test_autocompile_toolchain_hash.c
+            src/autocompile.c
+            src/host_span_ring.c)
+        target_include_directories(autocompile_toolchain_hash_test PRIVATE include)
+        add_test(NAME autocompile_toolchain_hash_test
+                 COMMAND autocompile_toolchain_hash_test)
     endif()
+
+    # Always-on wall-time frame/span rings (host_span_ring.h): the hitch-attribution
+    # rings every runtime stall probe reads.
+    add_executable(host_span_ring_test
+        tests/test_host_span_ring.c
+        src/host_span_ring.c)
+    target_include_directories(host_span_ring_test PRIVATE include)
+    if(UNIX)
+        find_package(Threads REQUIRED)
+        target_link_libraries(host_span_ring_test PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME host_span_ring_test COMMAND host_span_ring_test)
 
     # ---- previously-unregistered standalone tests -------------------------
     # These 16 existed in runtime/tests/ with no add_test() entry. Their only
@@ -1394,6 +1564,10 @@ if(BUILD_TESTING)
     add_executable(cdrom_irq_mask_test tests/test_cdrom_irq_mask.c)
     target_include_directories(cdrom_irq_mask_test PRIVATE src)
     add_test(NAME cdrom_irq_mask_test COMMAND cdrom_irq_mask_test)
+
+    add_executable(cdrom_sector_fifo_test tests/test_cdrom_sector_fifo.c)
+    target_include_directories(cdrom_sector_fifo_test PRIVATE include src)
+    add_test(NAME cdrom_sector_fifo_test COMMAND cdrom_sector_fifo_test)
 
     add_executable(cdrom_lid_state_test tests/test_cdrom_lid_state.c)
     target_include_directories(cdrom_lid_state_test PRIVATE src)
@@ -1513,6 +1687,10 @@ if(BUILD_TESTING)
         target_link_libraries(dynamic_resolution_test PRIVATE m)
     endif()
     add_test(NAME dynamic_resolution_test COMMAND dynamic_resolution_test)
+    # Game Mode (Steam Deck / gamescope) detection and precedence.
+    add_executable(game_mode_test tests/test_game_mode.c src/game_mode.c)
+    target_include_directories(game_mode_test PRIVATE include)
+    add_test(NAME game_mode_test COMMAND game_mode_test)
     # The render-thread controller (dynrt_*) against a synthetic pipeline.
     add_executable(dynamic_resolution_rt_test
         tests/test_dynamic_resolution_rt.c
@@ -1728,6 +1906,18 @@ if(BUILD_TESTING)
         add_test(NAME netplay_input_hist_test COMMAND netplay_input_hist_test)
     endif()
 
+    # IRQ policy for nested overlay call units: IRQs are delivered inside a
+    # unit (a callee that polls for an IRQ-set flag, libcard MemCardSync, must
+    # not starve: LoD "Checking MEMORY CARD" hang). Header-only, no runtime link.
+    add_executable(overlay_unit_defer_test tests/test_overlay_unit_defer.c)
+    target_include_directories(overlay_unit_defer_test PRIVATE src)
+    if(MSVC)
+        target_compile_options(overlay_unit_defer_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(overlay_unit_defer_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME overlay_unit_defer_test COMMAND overlay_unit_defer_test)
+
     add_executable(overlay_store_cycle_barrier_test
         tests/test_overlay_store_cycle_barrier.c)
     target_include_directories(overlay_store_cycle_barrier_test PRIVATE include)
@@ -1755,6 +1945,13 @@ if(BUILD_TESTING)
     target_include_directories(psx_cycle_event_boundaries_test PRIVATE include)
     add_test(NAME psx_cycle_event_boundaries_test
              COMMAND psx_cycle_event_boundaries_test)
+
+    # idle_skip store-counter loops: PsyQ v_wait skips, near misses do not.
+    add_executable(idle_skip_store_counter_test
+        tests/test_idle_skip_store_counter.c
+        src/psx_cycles.c)
+    target_include_directories(idle_skip_store_counter_test PRIVATE include)
+    add_test(NAME idle_skip_store_counter_test COMMAND idle_skip_store_counter_test)
 
     add_executable(psx_vblank_clock_test
         tests/test_psx_vblank_clock.c
@@ -1810,17 +2007,33 @@ if(BUILD_TESTING)
                              --cc ${CMAKE_C_COMPILER})
         endif()
         add_test(NAME fntrace_c_linkage_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_fntrace_c_linkage.py)
+        add_test(NAME depth24_present_hold_vblank_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_depth24_present_hold_vblank.py)
         add_test(NAME netplay_load_apply_flow_test
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_netplay_load_apply_flow.py)
+        add_test(NAME restore_edge_irq_check_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_restore_edge_irq_check.py)
         if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
             add_test(NAME netplay_rb_session_reset_test
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_netplay_rb_session_reset.py
                              --compiler ${CMAKE_C_COMPILER})
+            if(PSXRECOMP_TEST_HAS_RBENGINE)
+                # Multi-seat Verify with a lost POST (#636): production Verify
+                # code, controlled clock and lossy transport.
+                add_test(NAME netplay_rb_verify_lost_post_test
+                         COMMAND ${Python3_EXECUTABLE}
+                                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_netplay_rb_verify_lost_post.py
+                                 --compiler ${CMAKE_C_COMPILER}
+                                 --recomp-net ${_RNET_ROOT})
+            endif()
             add_test(NAME overlay_retry_c11_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_overlay_retry_c11.py --compiler ${CMAKE_C_COMPILER})
         endif()
         add_test(NAME setup_bios_assets_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_setup_bios_assets.py)
+        add_test(NAME compile_overlays_publish_marker_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compile_overlays_publish_marker.py)
         if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             add_test(NAME launch_disc_path_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_launch_disc_path.py --compiler ${CMAKE_CXX_COMPILER})
             add_test(NAME persisted_settings_paths_test COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_persisted_settings_paths.py --compiler ${CMAKE_CXX_COMPILER})

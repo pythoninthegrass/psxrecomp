@@ -37,14 +37,17 @@ class RetailBiosProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             fw = Path(temporary)
             (fw / "bios").mkdir()
-            (fw / "bios/SCPH5552.toml").write_text('[program]\nid="SCPH-5552"\n', encoding="utf-8")
+            (fw / "bios/SCPH5552.toml").write_text(
+                '[program]\nid="SCPH-5552"\n[recompiler]\nout_dir = "generated"\nout_stem = "SCPH5552"\n',
+                encoding="utf-8")
             progress = Mock()
             with patch.object(cli, "framework_root", return_value=fw), \
                  patch.object(cli, "find_psxrecomp_bios", return_value=fw / "bios-tool"), \
+                 patch.object(cli, "_which_tool", return_value=Path("cmake")), \
                  patch.object(cli.subprocess, "run") as run:
                 run.return_value = subprocess.CompletedProcess([], 0, "BIOS → generated", "")
                 cli.regen_bios_profile(fw, "bios/SCPH5552.toml", progress=progress)
-                args, kwargs = run.call_args
+                args, kwargs = run.call_args_list[0]
                 self.assertEqual(args[0][1:], ["--config", "bios/SCPH5552.toml"])
                 self.assertEqual(kwargs["cwd"], str(fw))
                 self.assertEqual(kwargs["encoding"], "utf-8")
@@ -52,6 +55,22 @@ class RetailBiosProfileTests(unittest.TestCase):
                 run.return_value = subprocess.CompletedProcess([], 2, "", "wrong image")
                 with self.assertRaisesRegex(RuntimeError, "SCPH5552.*exit 2"):
                     cli.regen_bios_profile(fw, "bios/SCPH5552.toml", progress=progress)
+
+    def test_successful_regen_writes_emitter_stamp(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fw = Path(temporary)
+            (fw / "bios").mkdir()
+            (fw / "bios/OpenBIOS.toml").write_text(
+                '[recompiler]\nout_dir = "generated"\nout_stem = "OpenBIOS"\n', encoding="utf-8")
+            with patch.object(cli, "framework_root", return_value=fw), \
+                 patch.object(cli, "find_psxrecomp_bios", return_value=fw / "bios-tool"), \
+                 patch.object(cli.shutil, "which", return_value="cmake"), \
+                 patch.object(cli.subprocess, "run") as run:
+                run.side_effect = [subprocess.CompletedProcess([], 0, "", ""),
+                                   subprocess.CompletedProcess([], 0, "abc123\n", "")]
+                cli.regen_bios_profile(fw, "bios/OpenBIOS.toml", progress=Mock())
+            self.assertEqual((fw / "generated/OpenBIOS.emitter.sha").read_text(encoding="utf-8"),
+                             "abc123\n")
 
 
 if __name__ == "__main__":
