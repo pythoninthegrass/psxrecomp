@@ -1053,6 +1053,7 @@ endfunction()
 # EXCLUDE_BUILTIN_MODS; the selection (and its loud failures) lives in
 # psx_mod_catalog_select.cmake so the tests can drive it via `cmake -P`.
 include("${CMAKE_CURRENT_LIST_DIR}/psx_mod_catalog_select.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/psx_app_icon.cmake")
 
 # Immediate subdirectory names of `root` (package ids), sorted.
 function(_psxrt_package_ids root out_var)
@@ -1777,15 +1778,9 @@ function(psxrecomp_add_runtime_target target)
          CONTENT "$<TARGET_FILE_BASE_NAME:${target}>\n")
 
     # ---- Windows / desktop app icon ---------------------------------------
-    # Prefer an explicit APP_ICON, then the game-repo copy under assets/, then
-    # the framework default shipped in psxrecomp/assets (Retro-themed pad).
-    if(NOT PSXRT_APP_ICON)
-        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/assets/psxrecomp.ico")
-            set(PSXRT_APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/psxrecomp.ico")
-        elseif(EXISTS "${PSXRECOMP_ROOT}/assets/psxrecomp.ico")
-            set(PSXRT_APP_ICON "${PSXRECOMP_ROOT}/assets/psxrecomp.ico")
-        endif()
-    endif()
+    # Resolution order and the APP_ICON NONE opt-out: runtime/psx_app_icon.cmake.
+    psx_resolve_app_icon(PSXRT_APP_ICON "${PSXRT_APP_ICON}"
+                         "${CMAKE_CURRENT_SOURCE_DIR}" "${PSXRECOMP_ROOT}")
     if(PSXRT_APP_ICON AND EXISTS "${PSXRT_APP_ICON}")
         if(WIN32)
             # clang/llvm-mingw CI needs an RC compiler or the .rc is ignored and
@@ -2611,7 +2606,7 @@ endfunction()
 #     CODEGEN_SETUP_SOURCES codegen_setup.c
 #     DEFAULT_GAME_CONFIG_PATH "game.toml"
 #     LAUNCHER_BOXART "${CMAKE_CURRENT_SOURCE_DIR}/launcher_assets/img/boxart.tga"
-#     APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/psxrecomp.ico"
+#     APP_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/psxrecomp.ico"   # or NONE to ship no icon
 #     MAX_PLAYERS 2
 #     ENABLE_NETPLAY_IF_PRESENT
 #     ENABLE_SETUP_WIZARD

@@ -2109,6 +2109,12 @@ if(BUILD_TESTING)
                  COMMAND ${Python3_EXECUTABLE}
                          ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_mod_catalog_layout.py
                          --cmake ${CMAKE_COMMAND})
+        # psx_resolve_app_icon: explicit / game / framework icon order and the
+        # APP_ICON NONE opt-out, driven through cmake -P.
+        add_test(NAME app_icon_resolve_test
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_app_icon_resolve.py
+                         --cmake ${CMAKE_COMMAND})
         # psxrecomp_add_game_runtime(... PGXP): the real function body under
         # cmake -P, forwarding the hook-flavor option for the title's one
         # runtime (docs/ENHANCEMENTS.md G1.11).
